@@ -1,2 +1,2 @@
-# certificate of Participation
+# Certificate of Participation
 Signed certificates of participation.
