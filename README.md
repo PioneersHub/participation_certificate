@@ -1,2 +1,2 @@
-# participant_certificate
+# certificate of Participation
 Signed certificates of participation.
