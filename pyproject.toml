@@ -2,13 +2,19 @@
 name = "Certificates of Participation"
 version = "0.1.0"
 description = "Generate participation certificates for events."
-authors = ["Alexander CS Hendorf <hendorf@gmail.com>"]
-license = "MIT"
+authors = [
+    {name = "Alexander CS Hendorf", email = "hendorf@gmail.com"}
+]
+readme = "README.md"
+license = {file = "LICENSE"}
 classifiers = [
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.12",
 ]
-license = {file = "LICENSE"}
+
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
 
 [project.urls]
 Homepage = "https://github.com/PioneersHub/participation_certificate"
