@@ -7,6 +7,7 @@ import shutil
 from src.models.attendee import Attendee
 
 helpdesk_client = HelpDeskClient()
+helpdesk_client.set_throttling(1, 10)
 
 conference_name = "PyCon.DE & PyData Berlin 2024"
 
@@ -38,7 +39,8 @@ class Job(BaseModel):
 
 def collect_certificates():
     path_to_certificates = Path(__file__).parents[1] / conf.path_to_certificates / conf.event_short_name
-    path_to_certificates4upload = Path(__file__).parents[1] / conf.path_to_certificates / f"{conf.event_short_name}_upload"
+    path_to_certificates4upload = Path(__file__).parents[
+                                      1] / conf.path_to_certificates / f"{conf.event_short_name}_upload"
     path_to_certificates4upload.mkdir(exist_ok=True, parents=True)
     jobs = []
     for directory in path_to_certificates.glob("*"):
@@ -61,7 +63,8 @@ def send_certificates(jobs: list[Job], dry_run=False):
     team_id = "22c22fd0-db59-4ee0-9a76-622d7e9dda3e"  # Conference Tickets
     email = "tickets24@pycon.de"
     mail_client = MailClient()
-    for job in jobs:
+    for i, job in enumerate(jobs, 1):
+
         recipients = [
             Recipient(name=job.attendee.full_name, email=job.attendee.email, address_as=job.attendee.first_name)]
         # noinspection PyProtectedMember
@@ -74,7 +77,6 @@ def send_certificates(jobs: list[Job], dry_run=False):
             status="closed",
         )
         responses, errors = mail_client.send(mail, dry_run=dry_run)
-        a = 44
 
 
 if __name__ == "__main__":

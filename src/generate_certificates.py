@@ -95,10 +95,11 @@ class Certificates:
         fpdf.x = 45
         fpdf.y = 256 - 14
         fpdf.multi_cell(600, 14.4,
-                        "The annual conference covers topics in the domains of\n"
+                        # avoid unwanted word concatenations: end each line with a break or space!
+                        "The annual conference covers topics in the domains of\n"  
                         "Analytics, Artificial Intelligence, Community, DevOps, Ethics,\n"
-                        "LLMs, Machine Learning, MLOps, Software Engineering and\nWeb Development"
-                        "around the Python programming\nlanguage.\n\n"
+                        "LLMs, Machine Learning, MLOps, Software Engineering and\n"
+                        "Web Development around the Python programming\nlanguage.\n\n"
                         "The conference is run by Python Softwareverband e. V.\n"
                         "in cooperation with NumFOCUS Inc.\n\n"
                         "Signed\n\n\n\nAlexander CS Hendorf",
