@@ -1,0 +1,15 @@
+# BASIC CONFIGURATION, DO NOT ALTER
+# Put your configuration in `config.local.yaml`
+# put local fonts like fonts/<font family name>
+fonts_dir: "./fonts"
+# local path to write the static pages
+# this can be used to validate certificates via a website
+static_pages_website: ""
+# certificates will be stored in `_certificates` in the root dir by default
+path_to_certificates: "./_certificates"
+# short name of the event, used in paths
+event_short_name: ""
+# full name of the event, used in content
+event_full_name: ""
+# url to download certificates
+certificates_url: ""
