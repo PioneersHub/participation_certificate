@@ -1,9 +1,8 @@
 from pathlib import Path
+from omegaconf import OmegaConf
 
 import colorama
 import structlog
-
-fonts_path = Path(__file__).parents[1] / "fonts"
 
 cr = structlog.dev.ConsoleRenderer(
     columns=[
@@ -60,7 +59,17 @@ structlog.configure(
 structlog.configure(processors=structlog.get_config()["processors"][:-1] + [cr])
 logger = structlog.get_logger()
 
+global_conf = OmegaConf.load(Path(__file__).parents[1] / "config.yaml")
+local_config_path = Path(__file__).parents[1] / "config_local.yaml"
+if not local_config_path.exists():
+    with local_config_path.open("w") as f:
+        f.write("# Add your local configuration here")
+local_conf = OmegaConf.load(local_config_path)
+conf = OmegaConf.merge(global_conf, local_conf)
+
+fonts_path = Path(__file__).parents[1] / conf.fonts_dir
+
 all_fonts = list(fonts_path.rglob("*.ttf"))
 logger.debug(f"Found {len(all_fonts)} fonts in {fonts_path}")
 
-__ALL__ = ["all_fonts", "logger"]
+__ALL__ = ["all_fonts", "logger", "conf"]
