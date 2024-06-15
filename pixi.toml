@@ -10,7 +10,10 @@ platforms = ["osx-arm64"]
 [dependencies]
 python = ">=3.12.3,<3.13"
 pixi-pycharm = ">=0.0.5,<0.1"
-pydantic = ">=2.7.3,<2.8"
+pandas = ">=2.2.2,<2.3"
+openpyxl = ">=3.1.2,<3.2"
+pikepdf = ">=9.0.0,<9.1"
+scikit-learn = ">=1.5.0,<1.6"
 
 [tasks]
 postinstall = "pip install --no-build-isolation --no-deps --disable-pip-version-check -e ."
@@ -44,3 +47,16 @@ lint = "pre-commit run --all"
 default = ["test"]
 lint = ["lint"]
 py312 = ["py312", "test"]
+
+[pypi-dependencies]
+colorama = "*"
+structlog = "*"
+rich = "*"
+fpdf2 = "*"
+pdfrw = "*"
+pydantic = { version = "*", extras = ["email"] }
+packaging = "*"
+wheel = "*"
+endesive = "*"
+omegaconf = "*"
+pytanis = { version = "*", extras = ["all"] }

@@ -161,3 +161,8 @@ cython_debug/
 # pixi environments
 .pixi
 *.egg-info
+
+data/
+_*/
+graphics
+config_local.yaml
