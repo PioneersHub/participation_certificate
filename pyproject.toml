@@ -59,3 +59,4 @@ ignore = [
 [tool.ruff.format]
 quote-style = "double"
 indent-style = "space"
+docstring-code-format = "reStructuredText"

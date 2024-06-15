@@ -1,0 +1,2 @@
+To add a font add a directory to the `fonts` directory and add the font files to that directory.
+The font files should be TrueType (".ttf") fonts.
