@@ -11,6 +11,8 @@ It's supposed to be help you with the generation of the certificates but does re
 
 Main library used: [fpdf2](https://py-pdf.github.io/fpdf2/index.html)
 
+<img src="graphics/example_certificate.png" style="width: 50%;">
+
 ## Four-Step Process
 
 1. Prepare attendees' data
