@@ -1,15 +1,38 @@
 # BASIC CONFIGURATION, DO NOT ALTER
 # Put your configuration in `config.local.yaml`
-# put local fonts like fonts/<font family name>
-fonts_dir: "./fonts"
-# local path to write the static pages
-# this can be used to validate certificates via a website
-static_pages_website: ""
-# certificates will be stored in `_certificates` in the root dir by default
-path_to_certificates: "./_certificates"
-# short name of the event, used in paths
+# ########################################
+# METADATA
+# ########################################
+# short name of the event, also used in output paths
 event_short_name: ""
 # full name of the event, used in content
 event_full_name: ""
 # url to download certificates
 certificates_url: ""
+# this can be used to validate certificates via a website
+static_pages_website: ""
+# ########################################
+# DIRECTORIES
+# ########################################
+# Each directory is relative to the root of the project and will be created if it does not exist
+dirs:
+  # Default directory to store PDF certificates, excluded via .gitignore
+  path_to_certificates: "./_certificates"
+  # Directory for cryptographic keys, certificates to sign PDF
+  path_to_signatures: "./_signatures"
+  # Directory for local fonts like. Add fonts in by font family name: fonts/<font family name>, excluded via .gitignore
+  fonts_dir: "./fonts"
+  # Directory for local data, excluded via .gitignore
+  data_dir: "./_data"
+  # local path to write the static pages
+# ########################################
+# FONTS
+# ########################################
+default_font: "Helvetica"
+additional_fonts:  # located in ./fonts
+  # - "Roboto"
+# ########################################
+# OTHER / OPTIONAL
+# ########################################
+email:
+   team_id: ""
