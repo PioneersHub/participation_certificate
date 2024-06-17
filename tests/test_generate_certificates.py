@@ -2,7 +2,7 @@ from pathlib import Path
 
 from unittest.mock import Mock, patch
 
-from src import fonts_path
+from src import conf
 from src.generate_certificates import PDF, Certificates
 from src.preprocess_attendees import Attendee
 
@@ -25,9 +25,9 @@ def test_pdf_initialization():
 def test_pdf_footer():
     pdf = PDF(format="A4", orientation="L", unit="pt", attendee=attendee)
     pdf.add_page()
-    pdf.add_font("poppins-regular", "", fonts_path / "Poppins/Poppins-Regular.ttf")
-    pdf.add_font("poppins-regular", "B", fonts_path / "Poppins/Poppins-Bold.ttf")
-    pdf.add_font("poppins-regular", "I", fonts_path / "Poppins/Poppins-Italic.ttf")
+    pdf.add_font("poppins-regular", "", conf.dirs.fonts_path / "Poppins/Poppins-Regular.ttf")
+    pdf.add_font("poppins-regular", "B", conf.dirs.fonts_path / "Poppins/Poppins-Bold.ttf")
+    pdf.add_font("poppins-regular", "I", conf.dirs.fonts_path / "Poppins/Poppins-Italic.ttf")
     pdf.footer()
     # Check if footer content is as expected (simplified example)
     assert 28 < pdf.y < 29

@@ -166,3 +166,4 @@ data/
 _*/
 graphics
 config_local.yaml
+!.gitignore

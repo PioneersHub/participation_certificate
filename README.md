@@ -1,6 +1,13 @@
 # Certificate of Participation
 
-Create signed certificates of participation that can be validate via a website.
+This is a boilerplate repo to create signed certificates of participation that can be validated via a website.  
+It's supposed to be help you with the generation of the certificates but does require:
+
+- Code mangling to prepare the data to be displayed on the certificate
+- Designing / altering the example certificate layout
+- Generation of a custom PKCS12 certificate to sign the PDFs
+- Customizing the upload script to fit your website
+- Customizing the delivery email script
 
 Main library used: [fpdf2](https://py-pdf.github.io/fpdf2/index.html)
 
@@ -10,6 +17,8 @@ Main library used: [fpdf2](https://py-pdf.github.io/fpdf2/index.html)
 2. Generate certificates
 3. Upload certificates to the website
 4. Send emails to attendees
+
+Each step should be run separately for review of intermediate results.
 
 ### 0. Configuration
 
@@ -74,7 +83,7 @@ Use an unique subdomain, e.g. `certificates.your-domain.abc`.
 In you do not have a certificate for this domain, yet,
 create a free certificate for this domain with `certbot`.
 
-See [Certbot](//--> ADD LINK  <--- //) how to create certificates with certbot.
+See [Certbot](https://certbot.eff.org) how to create certificates with certbot.
 A `privateKey` and a `certificate` is created.
 
 To create a signature for the signing the PDfs use the following command
@@ -127,9 +136,10 @@ To content or change these sections one needs to overwrite the `header` and `foo
 # create and use a new class that inherits from FPDF
 class PDF(FPDF):
     def header(self):
-        pass # do your stuff
+        pass  # do your stuff
+
     def footer(self):
-        pass # do your stuff
+        pass  # do your stuff
 ```
 
 #### Design vs. Signing and Encryption
@@ -141,3 +151,14 @@ and merge both to a new PDF.
 See [Adding content onto an existing PDF page](https://py-pdf.github.io/fpdf2/CombineWithPdfrw.html#adding-content-onto-an-existing-pdf-page)
 
 Downside: PDF created this way can **not** be signed or encrypted.
+
+#### Markdown in text for PDFs
+
+You can use markdown in the text for the PDFs.
+Make sure to load fonts for bold and italic text like:  
+
+regular-text-font-name, typeface, path-to-font-file, e.g.,
+
+```python
+fpdf.add_font("poppins-regular", "B", font.parents[1] / "Poppins/Poppins-Bold.ttf")
+```

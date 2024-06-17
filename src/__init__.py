@@ -67,9 +67,11 @@ if not local_config_path.exists():
 local_conf = OmegaConf.load(local_config_path)
 conf = OmegaConf.merge(global_conf, local_conf)
 
-fonts_path = Path(__file__).parents[1] / conf.fonts_dir
+# make dirs in config to Path objects
+for k, dir_from_project_root in conf.dirs.items():
+    conf.dirs[k] = Path(__file__).parents[1] / dir_from_project_root
 
-all_fonts = list(fonts_path.rglob("*.ttf"))
-logger.debug(f"Found {len(all_fonts)} fonts in {fonts_path}")
+all_fonts = list(conf.dirs.fonts_dir.rglob("*.ttf"))
+logger.debug(f"Found {len(all_fonts)} fonts in {conf.dirs.fonts_dir.name}")
 
 __ALL__ = ["all_fonts", "logger", "conf"]
