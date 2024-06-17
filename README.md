@@ -1,6 +1,6 @@
-# Certificate of Participation
+# Certificate of Attendance
 
-This is a boilerplate repo to create signed certificates of participation that can be validated via a website.  
+This is a boilerplate repo to create signed certificates of attendance that can be validated via a website.  
 It's supposed to be help you with the generation of the certificates but does require:
 
 - Code mangling to prepare the data to be displayed on the certificate
@@ -11,7 +11,7 @@ It's supposed to be help you with the generation of the certificates but does re
 
 Main library used: [fpdf2](https://py-pdf.github.io/fpdf2/index.html)
 
-<img src="graphics/example_certificate.png" style="width: 50%;">
+<img src="graphics/example_certificate.png" style="width: 75%;">
 
 ## Four-Step Process
 
