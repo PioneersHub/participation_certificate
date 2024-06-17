@@ -9,10 +9,9 @@ from src.models.attendee import Attendee
 helpdesk_client = HelpDeskClient()
 helpdesk_client.set_throttling(1, 10)
 
-conference_name = "PyCon.DE & PyData Berlin 2024"
 
-
-def message(attendee: Attendee, file_name):
+def message(attendee: Attendee):
+    """ Message to be sent to the attendees with the certificate link """
     message_text = f"""
 Dear {attendee.first_name},
 
@@ -28,7 +27,7 @@ Please keep in mind that the certificates are issued based on the information pr
 Thank you for being a part of our event. We hope to see you again at future conferences!
 
 All the best,
-{conference_name} Team"""
+{conf.event_full_name} Team"""
     return message_text
 
 
@@ -38,9 +37,9 @@ class Job(BaseModel):
 
 
 def collect_certificates():
-    path_to_certificates = Path(__file__).parents[1] / conf.path_to_certificates / conf.event_short_name
-    path_to_certificates4upload = Path(__file__).parents[
-                                      1] / conf.path_to_certificates / f"{conf.event_short_name}_upload"
+    path_to_certificates = conf.path_to_certificates / conf.event_short_name
+    # mirror with just the pdfs for upload to a webdirectory
+    path_to_certificates4upload = conf.path_to_certificates / f"{conf.event_short_name}_upload"
     path_to_certificates4upload.mkdir(exist_ok=True, parents=True)
     jobs = []
     for directory in path_to_certificates.glob("*"):
@@ -51,6 +50,7 @@ def collect_certificates():
         with open(jsonf, "r") as f:
             data = json.load(f)
             attendee = Attendee(**data)
+        # only one pdf-file is expected
         pdf = list(directory.glob("*.pdf"))[0]
         dst = path_to_certificates4upload / f"{attendee.uuid}{pdf.suffix}"
         if not dst.exists():
@@ -60,8 +60,7 @@ def collect_certificates():
 
 
 def send_certificates(jobs: list[Job], dry_run=False):
-    team_id = "22c22fd0-db59-4ee0-9a76-622d7e9dda3e"  # Conference Tickets
-    email = "tickets24@pycon.de"
+    # Conference Tickets
     mail_client = MailClient()
     for i, job in enumerate(jobs, 1):
 
@@ -69,14 +68,16 @@ def send_certificates(jobs: list[Job], dry_run=False):
             Recipient(name=job.attendee.full_name, email=job.attendee.email, address_as=job.attendee.first_name)]
         # noinspection PyProtectedMember
         mail = Mail(
-            subject=f"Certificate of Attendance: {conference_name}",
-            text=message(attendee=job.attendee, file_name=job.file.name),
-            team_id=team_id,
+            subject=f"Certificate of Attendance: {conf.event_full_name}",
+            text=message(attendee=job.attendee),
+            team_id=conf.email.team_id,
             recipients=recipients,
             agent_id=helpdesk_client._config.HelpDesk.account,
             status="closed",
         )
         responses, errors = mail_client.send(mail, dry_run=dry_run)
+        if errors:
+            logger.error(f"Error sending mail to {job.attendee.email}: {errors}")
 
 
 if __name__ == "__main__":

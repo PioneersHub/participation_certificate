@@ -30,5 +30,6 @@ class Attendee(BaseModel):
         hsh = hashlib.sha512()
         hsh.update(hash_this.encode("utf-8"))
         self.hash = base64.urlsafe_b64encode(hsh.hexdigest().encode("utf-8"))[:6].decode("utf-8").upper()
-        # uuid for webservice
+        # stable uuid for webservice, this uuid will always be the same for the same attendee
+        # allows reruns without cleanup
         self.uuid = str(UUID4(hsh.hexdigest()[:32]))
