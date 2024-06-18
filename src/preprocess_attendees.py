@@ -1,5 +1,6 @@
 from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 import pandas as pd
 
@@ -7,14 +8,20 @@ from src import logger
 from src.models.attendee import Attendee
 
 
-class Attendees:
-    def __init__(self, xlsx_file: Path, columns: dict[str, str], select_func: Callable | None = None,
-                 transforms: dict[str, Callable] | None = None):
+class ProcessAttendees:
+    """ Process data to fit the Attendee model."""
+    def __init__(
+            self,
+            xlsx_file: Path,
+            columns: dict[str, str],
+            select_func: Callable[[..., pd.DataFrame], pd.DataFrame] | None = None,
+            transformers: dict[str, Callable[[..., Any], Any]] | None = None
+    ):
         self.attendees = []
         self.xlsx_file = xlsx_file
         self.columns = columns
         self.select_func = select_func
-        self.transforms = transforms
+        self.transformers = transformers
 
         self.attendees = self.load_attendees()
 
@@ -28,8 +35,8 @@ class Attendees:
         logger.info(f"Applied selecting attendees: {len(df)} attendees in list.")
 
         # transformations apply methods to mangle column data
-        for col in self.transforms:
-            df[col] = df[col].apply(self.transforms[col])
+        for col in self.transformers:
+            df[col] = df[col].apply(self.transformers[col])
         logger.info(f"Transformed {len(df)} attendees")
 
         # remove incomplete information, i.e., missing name or email; other columns are populated by default.
