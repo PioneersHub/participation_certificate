@@ -1,9 +1,10 @@
 from pathlib import Path
-
+import pytest
+from omegaconf import OmegaConf
 from unittest.mock import Mock, patch
 
 from src import conf
-from src.generate_certificates import PDF, Certificates
+from src.generate_certificates import PDF, Certificates, value_or_default
 from src.preprocess_attendees import Attendee
 
 # Sample attendee for testing
@@ -96,3 +97,64 @@ def test_generate_certificate_signing(mock_sign_pkcs12):
     certificates = Certificates([attendee], event, sign_key=sign_key, sign_password=sign_password)
     certificates.generate_certificate(attendee)
     mock_sign_pkcs12.assert_called_once_with(sign_key, sign_password)
+
+
+test_conf = OmegaConf.create({
+    'layout': {
+        'default': {
+            'section1': {
+                'key1': 'default_value1',
+                'key2': 'default_value2',
+                'key8': '',
+                'key4': {
+                    'key5': 'default_value5',
+                    'key12': '',
+                },
+            }},
+        'section1': {
+            'key1': 'value1',
+            'key3': 'value2',
+            'key4': '',
+            'key10': '',
+            'key6': {
+                'key5': 'value7',
+                'key11': ''
+            }
+        }
+    }
+})
+
+
+class TestValueOrDefault:
+
+    @patch("src.conf", new=test_conf)
+    def test_value_present(self):
+        result = value_or_default(test_conf.layout, ('section1', 'key1'))
+        assert result == 'value1'
+        result = value_or_default(test_conf.layout, ('section1', 'key6', 'key5'))
+        assert result == 'value7'
+        result = value_or_default(test_conf.layout, ('section1', 'key10'))
+        assert result == ''
+        result = value_or_default(test_conf.layout, ('section1', 'key6', "key11"))
+        assert result == ''
+
+    @patch("src.conf", new=test_conf)
+    @patch("src.conf.layout.default", new=test_conf.layout.default)
+    def test_value_missing_fallback(self):
+        mock_conf = conf
+        result = value_or_default(test_conf.layout, ('section1', 'key2'))
+        assert result == 'default_value2'
+        result = value_or_default(test_conf.layout, ('section1', 'key4', 'key5'))
+        assert result == 'default_value5'
+        result = value_or_default(test_conf.layout, ('section1', 'key8'))
+        assert result == ''
+        result = value_or_default(test_conf.layout, ('section1', 'key4', 'key12'))
+        assert result == ''
+
+    @patch("src.conf", new=test_conf)
+    @patch("src.conf.layout.default", new=test_conf.layout.default)
+    def test_non_existent_key(self):
+        with pytest.raises(AttributeError):
+            value_or_default(test_conf.layout, ('section0',))
+        with pytest.raises(AttributeError):
+            value_or_default(test_conf.layout, ('section1', 'key0'))

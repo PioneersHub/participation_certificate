@@ -1,15 +1,18 @@
 import base64
 import hashlib
-from collections.abc import Callable
-from pathlib import Path
-
-import pandas as pd
 from pydantic import UUID4, BaseModel, EmailStr
 
-from src import logger
+
+class UUID(BaseModel):
+    """ Requirement: A UUID4 is used to name files and directories."""
+    uuid: str | None = None
+
+    def model_post_init(self, ctx):  # noqa: ARG002
+        self.uuid = str(UUID4("your string here"))
 
 
-class Attendee(BaseModel):
+# example: this is how a model for a conference attendee could look like
+class Attendee(UUID):
     """
     Record to create a certificate from.
     The `hash` is created automatically from `full_name` & `ticket_reference`. It can be used as serial number on
@@ -22,7 +25,6 @@ class Attendee(BaseModel):
     ticket_reference: str
     attended_how: str
     hash: str | None = None
-    uuid: str | None = None
 
     def model_post_init(self, ctx):  # noqa: ARG002
         # short hash to identify the attendee
