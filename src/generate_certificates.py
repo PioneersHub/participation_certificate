@@ -2,9 +2,11 @@ import json
 import secrets
 from datetime import datetime, UTC
 from pathlib import Path
+from typing import Any
 
 from fpdf import FPDF, FPDF_VERSION
 from fpdf.enums import AccessPermission
+from omegaconf import DictConfig
 
 from src import all_fonts, logger, conf
 from src.preprocess_attendees import Attendee
@@ -17,17 +19,56 @@ class PDF(FPDF):
         super().__init__(*args, **kwargs)
 
     def footer(self):
-        self.set_y(-33)
-        self.set_x(45)
-        self.set_font("poppins-regular", size=8, style="")
-        self.set_text_color(77, 170, 220)
-        self.multi_cell(
-            w=200,
-            text=f"**[Validate this certificate online](https://2024.pycon.de/attendee-certificate/{self.attendee.uuid}/)**",
-            markdown=True,
-            new_x="LEFT",
-            new_y="TOP",
-        )
+        if conf.layout.footer.get("text_items"):
+            for item in conf.layout.footer.text_items:
+                font = value_or_default(item, "font.name")
+                size = value_or_default(item, "font.size")
+                style = value_or_default(item, "font.style")
+                color = value_or_default(item, "font.color")
+                width = value_or_default(item, "width")
+                text = value_or_default(item, "text")
+                self.set_font(font, size=size, style=style)
+                # text_color = (0, 0, 0) if not item.font.get("color") else item.color.rgb
+                self.set_text_color(color)
+                x, y = item.position
+                text = render_text(text, attendee=self.attendee, link=conf.static_pages_website)
+                self.set_x(x)
+                self.set_y(y)
+                self.set_text_color(77, 170, 220)
+                self.multi_cell(
+                    w=item.width,
+                    text=text,
+                    markdown=True,
+                    new_x="LEFT",
+                    new_y="TOP",
+                )
+
+
+def value_or_default(obj: DictConfig, keys: tuple[str, ...] | str, path: tuple[str, ...] = ()):
+    if isinstance(keys, str):
+        keys = tuple(keys.split("."))
+    for key in keys:
+        if "default" in path and "default" in obj:
+            obj = obj.default
+        if key in obj:
+            if keys[1:]:
+                path = path + (key,)
+                return value_or_default(obj[key], keys=keys[1:], path=path)
+            return obj[key]
+        elif "default" in path:
+            raise AttributeError(f"Default value {'.'.join(path + (key,))} does not exist.")
+        else:
+            return value_or_default(conf.layout, keys=path + keys, path=("default",))
+
+
+def render_text(text: str | list, **kwargs):
+    new_text = []
+    if isinstance(text, str):
+        new_text.append(text.format(**kwargs))
+    else:
+        for line in text:
+            new_text.append(line.format(**kwargs))
+    return "\n".join(new_text)
 
 
 class Certificates:
@@ -44,7 +85,7 @@ class Certificates:
 
         :param attendees: iterable of `Attendee`'s models, contains information about the person.
         :param event: Name string of the event.
-        :param permissions: defaults to allow PRINT_LOW_RES, PRINT_HIGH_RES only.
+        :param permissions: Defaults to allow PRINT_LOW_RES, PRINT_HIGH_RES only.
           Custom permissions can be set via `fpdf.enums.AccessPermission`.
         :param sign_key: optional: sign documents using PKCS#12 certificates; path to certificate file.
         :param sign_password: optional: only required if sign_key is set.
@@ -65,99 +106,68 @@ class Certificates:
         fpdf = PDF(format="A4", orientation="L", unit="pt", attendee=attendee)
         self.load_project_fonts(fpdf)
         fpdf.add_page()
+        if conf.layout.get("background"):
+            for item in conf.layout.background:
+                color = value_or_default(item, "color")
+                fpdf.set_fill_color(*color)
+                width = item.width if item.get("width") else fpdf.w
+                height = item.height if item.get("height") else fpdf.h
+                x, y = item.position if item.get("position") else (0, 0)
+                fpdf.rect(x=x, y=y, w=width, h=height, style="F")
 
-        fpdf.set_fill_color(61, 164, 51)
-        fpdf.rect(x=0, y=0, w=fpdf.w, h=fpdf.h, style="F")
+        if conf.layout.get("text_items"):
+            for item in conf.layout.text_items:
+                font = value_or_default(item, "font.name")
+                size = value_or_default(item, "font.size")
+                style = value_or_default(item, "font.style")
+                color = value_or_default(item, "font.color")
+                width = value_or_default(item, "width")
+                text = value_or_default(item, "text")
+                fpdf.set_font(font, size=size, style=style)
+                # text_color = (0, 0, 0) if not item.font.get("color") else item.color.rgb
+                fpdf.set_text_color(color)
+                x, y = item.position if item.get("position") else (0, 0)
+                text = render_text(text, attendee=attendee, event_full_name=conf.event_full_name)
 
-        fpdf.set_fill_color(255, 255, 255)
-        fpdf.rect(x=20, y=20, w=fpdf.w - 40, h=fpdf.h - 40, style="F")
+                if "rotate" in item:
+                    with fpdf.rotation(item.rotate, x, y):
+                        fpdf.text(x=x, y=y, txt=text)
+                elif "\n" in text:
+                    fpdf.x, fpdf.y = x, y
+                    fpdf.multi_cell(width, max_line_height=size * 1.25,
+                                    text=text,
+                                    markdown=True)
+                else:
+                    fpdf.text(x=x, y=y, txt=text)
 
-        fpdf.text(45, 98, "Certificate of Attendance")
-        fpdf.set_font("poppins-bold", size=24)
-        fpdf.text(50, 180, attendee.full_name)
-        fpdf.text(532, 128, f"No. {attendee.hash}")
-        fpdf.set_font("poppins-regular", size=14, style="")
-        fpdf.text(49, 135, "This is to certify* that,")
+            for g in conf.layout.graphics:
+                x, y = g.position
+                link = g.get("link", "")
+                fpdf.image(
+                    conf.dirs.graphics / g.name, x=x, y=y, w=g.width, link=link)
 
-        fpdf.x = 45
-        fpdf.y = 200
-        fpdf.multi_cell(600, 16.8,
-                        f"has attended the **PyCon DE & PyData Berlin 2024**\n\rconference {attendee.attended_how}.",
-                        markdown=True)
+            fpdf.set_title(
+                render_text(conf.metadata.title, attendee=attendee, event_full_name=conf.event_full_name))
+            fpdf.set_subject(render_text(conf.metadata.description, attendee=attendee, event_full_name=conf.event_full_name))
+            fpdf.set_author(render_text(conf.metadata.author, attendee=attendee, event_full_name=conf.event_full_name))
+            fpdf.set_keywords(render_text(conf.metadata.keywords, attendee=attendee, event_full_name=conf.event_full_name))
+            fpdf.set_creator(f"py-pdf/fpdf{FPDF_VERSION}")
+            fpdf.set_creation_date(datetime.now(UTC))
+            # TODO MOVE TO config END
 
-        fpdf.set_font("poppins-regular", size=12, style="")
-        fpdf.x = 45
-        fpdf.y = 256 - 14
-        fpdf.multi_cell(600, 14.4,
-                        # avoid unwanted word concatenations: end each line with a break or space!
-                        "The annual conference covers topics in the domains of\n"
-                        "Analytics, Artificial Intelligence, Community, DevOps, Ethics,\n"
-                        "LLMs, Machine Learning, MLOps, Software Engineering and\n"
-                        "Web Development around the Python programming\nlanguage.\n\n"
-                        "The conference is run by Python Softwareverband e. V.\n"
-                        "in cooperation with NumFOCUS Inc.\n\n"
-                        "Signed\n\n\n\nAlexander CS Hendorf",
-                        markdown=True)
-        fpdf.set_font("poppins-regular", size=10, style="")
-        fpdf.x = 45
-        fpdf.y = 445
-        fpdf.multi_cell(600, 12,
-                        "as Chairman of the Board of Directors of\n"
-                        "Python Softwareverband e.V.",
-                        markdown=True)
+            fpdf.set_encryption(
+                # the pdf are supposed to never be altered by anyone: we use a random, unsaved password.
+                owner_password=secrets.token_urlsafe(10),
+                permissions=(AccessPermission.PRINT_LOW_RES | AccessPermission.PRINT_HIGH_RES
+                             if self.permissions is None else self.permissions)
+            )
 
-        fpdf.set_font("poppins-regular", size=6, style="")
-        x, y = fpdf.w - 25, 250
-        with fpdf.rotation(90, x, y):
-            fpdf.text(x, y, "* according to our records a named ticket was assigned to this name")
+            if self.sign_key is not None:
+                # optional
+                # noinspection PyTypeChecker
+                fpdf.sign_pkcs12(self.sign_key, self.sign_password)
 
-        # TODO MOVE TO config START
-        gpath = Path(__file__).parents[1] / "graphics"
-        fpdf.image(
-            gpath / "AH-Signature.png", x=70, y=370, w=80)
-
-        fpdf.image(
-            gpath / "24-snake.svg", x=400, y=160, w=440)
-
-        fpdf.image(
-            gpath / "PySV_print_CMYK_1-1-outline+url.eps", x=45, y=500, w=75, link="https://pysv.org/")
-        fpdf.image(
-            gpath / "PyConDE.svg", x=125, y=500, w=40, link="https://pycon.de")
-        fpdf.image(
-            gpath / "NumFocus_LRG_WHITE-BG.png", x=173, y=505, w=75, link="https://numfocus.org")
-        fpdf.image(
-            gpath / "PyData-Berlin.svg", x=255, y=500, w=75, link="https://berlin.pydata.org")
-        fpdf.image(
-            gpath / "Pioneers Hub Logo.svg", x=333, y=500, w=60, link="https://pioneershub.de")
-
-        description = """The annual conference covers topics in the domains of
-        Analytics, Artificial Intelligence, Community, DevOps, Ethics, LLMs, Machine Learning, MLOps, Software Engineering and Web Development around the Python programming
-        language.
-
-        The conference is run by Python Softwareverband e. V.
-        in cooperation with NumFOCUS Inc.
-        """
-        fpdf.set_title(f"PyCon DE & PyData Berlin 2024 - Certificate of Attendance for {attendee.full_name}")
-        fpdf.set_subject(f"{description}")
-        fpdf.set_author("Python Softwareverband e.V.")
-        fpdf.set_keywords("PyCon DE, PyData Berlin, Python Softwareverband e.V.")
-        fpdf.set_creator(f"py-pdf/fpdf{FPDF_VERSION}")
-        fpdf.set_creation_date(datetime.now(UTC))
-        # TODO MOVE TO config END
-
-        fpdf.set_encryption(
-            # the pdf are supposed to never be altered by anyone: we use a random, unsaved password.
-            owner_password=secrets.token_urlsafe(10),
-            permissions=(AccessPermission.PRINT_LOW_RES | AccessPermission.PRINT_HIGH_RES
-                         if self.permissions is None else self.permissions)
-        )
-
-        if self.sign_key is not None:
-            # optional
-            # noinspection PyTypeChecker
-            fpdf.sign_pkcs12(self.sign_key, self.sign_password)
-
-        self.save(attendee, fpdf)
+            self.save(attendee, fpdf)
 
     @classmethod
     def load_project_fonts(cls, fpdf):

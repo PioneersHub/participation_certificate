@@ -1,26 +1,56 @@
-# Certificate of Attendance
+# 🎨 Design & 🚢 Ship 📜 PDFs
 
-This is a boilerplate repo to create signed certificates of attendance that can be validated via a website.  
-It's supposed to be help you with the generation of the certificates but does require:
+Create signed, secure PDFs easy to validate.
 
-- Code mangling to prepare the data to be displayed on the certificate
-- Designing / altering the example certificate layout
-- Generation of a custom PKCS12 certificate to sign the PDFs
-- Customizing the upload script to fit your website
+This is a boilerplate repository.
+
+|                         | What does that mean?                               |
+|-------------------------|----------------------------------------------------|
+| signed                  | PDFs are digitally signed and cannot be altered    |  
+| secure                  | disallow features like copying text, altering      |                            | 
+| validated via a website | A link to your website to confirm the authenticity |
+
+The PDFs that can be used e.g., for
+
+- issuing certificates of attendance for a conference
+- issuing certificates of participation or a training
+- vouchers
+- …
+
+This repo will be help you with the generation of the certificates but does require:
+
+- Code to mangle/ prepare the data to be displayed on the certificate
+- Configuration to create the layout of the PDF
+- Generation of a personal PKCS12 certificate to sign the PDFs
+- Customizing the upload script to fit your own website
 - Customizing the delivery email script
 
 Main library used: [fpdf2](https://py-pdf.github.io/fpdf2/index.html)
 
+Sample PDF  
 <img src="graphics/example_certificate.png" style="width: 75%;">
 
-## Four-Step Process
+Sample Website for Validation  
+<img src="graphics/example-validation.png" style="width: 75%;">
 
-1. Prepare attendees' data
-2. Generate certificates
-3. Upload certificates to the website
-4. Send emails to attendees
+
+## ⭐️ Four-Step Process
+
+1. Prepare data to be included in the certificate
+2. Generate PDF certificates
+3. Upload PDF certificates to the website
+4. Send emails to notify recipients
 
 Each step should be run separately for review of intermediate results.
+
+--- 
+
+## 🏭 Walkthrough Example
+
+**Certificate of Attendance for a Conference**
+
+We want to create certificates for attendees of the "PyCon DE & PyData Berlin 2024" conference.  
+We have a list of all tickets sold including the names of the participants.
 
 ### 0. Configuration
 
@@ -117,6 +147,8 @@ Example: send_certificates.py
 Uses the helpdesk.com API to send emails via helpdesk tickets.
 DEPRECATED: the helpdesk.com API is throttled (ending mass info takes too long) and will be replace in the future.
 
+---
+
 ### Tipps and Best Practices.
 
 #### Designing the Certificate: Layouting
@@ -157,7 +189,7 @@ Downside: PDF created this way can **not** be signed or encrypted.
 #### Markdown in text for PDFs
 
 You can use markdown in the text for the PDFs.
-Make sure to load fonts for bold and italic text like:  
+Make sure to load fonts for bold and italic text like:
 
 regular-text-font-name, typeface, path-to-font-file, e.g.,
 

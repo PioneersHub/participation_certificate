@@ -14,25 +14,128 @@ static_pages_website: ""
 # ########################################
 # DIRECTORIES
 # ########################################
-# Each directory is relative to the root of the project and will be created if it does not exist
+# Each directory is relative to the root of the project and will be created if
+# it does not exist
 dirs:
   # Default directory to store PDF certificates, excluded via .gitignore
   path_to_certificates: "./_certificates"
   # Directory for cryptographic keys, certificates to sign PDF
   path_to_signatures: "./_signatures"
-  # Directory for local fonts like. Add fonts in by font family name: fonts/<font family name>, excluded via .gitignore
+  # Directory for local fonts like. Add fonts in by font family name:
+  # fonts/<font family name>, excluded via .gitignore
   fonts_dir: "./fonts"
   # Directory for local data, excluded via .gitignore
   data_dir: "./_data"
-  # local path to write the static pages
+  # local path to graphic files
+  graphics: "./graphics"
 # ########################################
 # FONTS
 # ########################################
 default_font: "Helvetica"
 additional_fonts:  # located in ./fonts
-  # - "Roboto"
+# - "Roboto"
+# ########################################
+# LAYOUT
+# ########################################
+# It's important to know the dimensions of your page to place items correctly.
+# DIN A4 pages in landscape orientation have
+# a width of 297mm and a height of 210mm = 841.89 x 595.28 points.
+layout:
+  default:
+    background:
+      color:
+        - 0
+        - 0
+        - 0  # black
+    font:
+      size: 12
+      name: "poppins-regular"
+      style: ""
+      color:
+        - 0
+        - 0
+        - 0  # black
+    width: 200
+  background:
+    # Items are place on top of each other.
+    # Add a sequence of items to be placed on the canvas.
+    # Currently only rectangles are supported.
+    # Rectangle as the background, will look like a frame.
+    - color:
+      - 61
+      - 164
+      - 51  # some green
+      width: 0 # full width
+      height: 0 # full height
+      position:
+        - 0
+        - 0
+  text_items:
+    # text: "str"
+    # position: tuple(x, y)
+    # font:
+      # name: "str valid font name (optional, fallbacks to default)"
+      # size: number (optional, fallbacks to default)
+      # style: B, I, BI  (optional, fallbacks to "")
+    - text: "This is a Title"
+      position:
+      - 45
+      - 98
+      font:
+        name: "poppins-bold"
+        size: 48
+        style: ""
+    - text: "Format text: {attendee.full_name}"
+      position:
+      - 50
+      - 180
+      font:
+        name: "poppins-bold"
+        size: 24
+    - text: "No. {attendee.hash}"
+      position:
+      - 532
+      - 128
+      font:
+        name: "poppins-bold"
+        size: 24
+    - text:
+        - multi-lime bold **{event_full_name}**
+        - text with format.
+      position:
+      - 45
+      - 200
+      width: 600
+      font:
+        size: 16
+    - text:
+
+    - text: "rotated text"
+      position:
+      - 816
+      - 250
+      font:
+        size: 6
+      rotate: 90  # degrees
+  graphics:
+    - name: "24-snake.svg"
+      position:
+        - 400
+        - 160
+      width: 440
+    - name: "PyConDE.svg"
+      position:
+        - 125
+        - 500
+      width: 40
+      link: https://pycon.de
+metadata:
+  description: "Add text here."
+  title: "Title"
+  author: "Author"
+  keywords: "A, B, C"
 # ########################################
 # OTHER / OPTIONAL
 # ########################################
 email:
-   team_id: ""
+  team_id: ""
