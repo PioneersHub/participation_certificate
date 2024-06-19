@@ -49,7 +49,7 @@ layout:
         - 0  # black
     font:
       size: 12
-      name: "poppins-regular"
+      name: "helvetica"
       style: ""
       color:
         - 0
@@ -82,7 +82,7 @@ layout:
       - 45
       - 98
       font:
-        name: "poppins-bold"
+        name: "helvetica"
         size: 48
         style: ""
     - text: "Format text: {attendee.full_name}"
@@ -90,14 +90,14 @@ layout:
       - 50
       - 180
       font:
-        name: "poppins-bold"
+        name: "helvetica"
         size: 24
     - text: "No. {attendee.hash}"
       position:
       - 532
       - 128
       font:
-        name: "poppins-bold"
+        name: "helvetica"
         size: 24
     - text:
         - multi-lime bold **{event_full_name}**
