@@ -1,8 +1,9 @@
+import logging
 from pathlib import Path
-from omegaconf import OmegaConf
 
 import colorama
 import structlog
+from omegaconf import OmegaConf
 
 cr = structlog.dev.ConsoleRenderer(
     columns=[
@@ -51,10 +52,19 @@ cr = structlog.dev.ConsoleRenderer(
 
 structlog.configure(
     processors=[
+        structlog.contextvars.merge_contextvars,
+        structlog.processors.add_log_level,
+        structlog.processors.StackInfoRenderer(),
+        structlog.dev.set_exc_info,
         structlog.processors.TimeStamper(fmt="%Y%m%dT%H%M%S", utc=True),
         structlog.processors.add_log_level,
         structlog.dev.ConsoleRenderer(),
-    ]
+    ],
+    wrapper_class=structlog.make_filtering_bound_logger(logging.DEBUG),
+    context_class=dict,
+    logger_factory=structlog.PrintLoggerFactory(),
+    cache_logger_on_first_use=False
+
 )
 structlog.configure(processors=structlog.get_config()["processors"][:-1] + [cr])
 logger = structlog.get_logger()
