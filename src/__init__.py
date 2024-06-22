@@ -73,7 +73,9 @@ global_conf = OmegaConf.load(Path(__file__).parents[1] / "config.yaml")
 local_config_path = Path(__file__).parents[1] / "config_local.yaml"
 if not local_config_path.exists():
     with local_config_path.open("w") as f:
-        f.write("# Add your local configuration here")
+        f.write("""# LOCAL configuration, any key here will overwrite the default configuration
+# NEVER COMMIT THIS FILE TO GIT
+# ########################################""")
 local_conf = OmegaConf.load(local_config_path)
 conf = OmegaConf.merge(global_conf, local_conf)
 
