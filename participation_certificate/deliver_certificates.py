@@ -2,9 +2,9 @@ from pytanis.helpdesk import HelpDeskClient, Recipient, Mail, MailClient
 import json
 from pathlib import Path
 from pydantic import BaseModel
-from src import conf, logger
+from participation_certificate import conf, logger
 import shutil
-from src.models.attendee import Attendee
+from participation_certificate.models.attendee import Attendee
 
 helpdesk_client = HelpDeskClient()
 helpdesk_client.set_throttling(1, 10)

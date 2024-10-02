@@ -2,9 +2,9 @@ from pathlib import Path
 
 import pandas as pd
 
-from src import conf
-from src.generate_certificates import Certificates
-from src.preprocess_attendees import ProcessAttendees
+from participation_certificate import conf
+from participation_certificate.generate_certificates import Certificates
+from participation_certificate.preprocess_attendees import ProcessAttendees
 
 if __name__ == "__main__":
     # CUSTOMIZE THIS

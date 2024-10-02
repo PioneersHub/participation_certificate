@@ -1,6 +1,6 @@
 # 🎨 Design & 🚢 Ship 📜 PDFs
 
-Certificate of Participation: Create thousands of signed, secure PDFs that easy to validate.
+Create signed, secure PDFs easy to validate.
 
 This is a boilerplate repository.
 
@@ -17,9 +17,31 @@ The PDFs that can be used e.g., for
 - vouchers
 - …
 
-This repo will be help you with the generation of the certificates.
+This repo will be help you with the generation of the certificates but does require:
 
-[Read the documentation]() for details.
+- Code to mangle/ prepare the data to be displayed on the certificate
+- Configuration to create the layout of the PDF
+- Generation of a personal PKCS12 certificate to sign the PDFs
+- Customizing the upload script to fit your own website
+- Customizing the delivery email script
+
+Main library used: [fpdf2](https://py-pdf.github.io/fpdf2/index.html)
+
+Sample PDF  
+<img src="graphics/example_certificate.png" style="width: 75%;">
+
+Sample Website for Validation  
+<img src="graphics/example-validation.png" style="width: 75%;">
+
+
+## ⭐️ Four-Step Process
+
+1. Prepare data to be included in the certificate
+2. Generate PDF certificates
+3. Upload PDF certificates to the website
+4. Send emails to notify recipients
+
+Each step should be run separately for review of intermediate results.
 
 
 ## Realization

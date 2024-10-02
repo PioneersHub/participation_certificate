@@ -2,8 +2,8 @@ import json
 from pathlib import Path
 import random
 
-from src import conf, logger
-from src.models.attendee import Attendee
+from participation_certificate import conf, logger
+from participation_certificate.models.attendee import Attendee
 
 path_to_certificates = Path(__file__).parents[1] / conf.path_to_certificates / conf.event_short_name
 static_pages_website = conf.static_pages_website

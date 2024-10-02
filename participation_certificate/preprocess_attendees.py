@@ -4,8 +4,8 @@ from typing import Any
 
 import pandas as pd
 
-from src import logger
-from src.models.attendee import Attendee
+from participation_certificate import logger
+from participation_certificate.models.attendee import Attendee
 
 
 class ProcessAttendees:
