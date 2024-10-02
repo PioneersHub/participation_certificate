@@ -60,3 +60,6 @@ wheel = "*"
 endesive = "*"
 omegaconf = "*"
 pytanis = { version = "*", extras = ["all"] }
+mkdocs = ">=1.6.1, <2"
+mkdocs-material = { version = ">=9.5.39, <10", extras = ["imaging"] }
+bumpversion = ">=0.6.0, <0.7"
