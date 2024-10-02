@@ -3,9 +3,9 @@ import pytest
 from omegaconf import OmegaConf
 from unittest.mock import Mock, patch
 
-from src import conf
-from src.generate_certificates import PDF, Certificates, value_or_default
-from src.preprocess_attendees import Attendee
+from participation_certificate import conf
+from participation_certificate.generate_certificates import PDF, Certificates, value_or_default
+from participation_certificate.preprocess_attendees import Attendee
 
 # Sample attendee for testing
 attendee = Attendee(

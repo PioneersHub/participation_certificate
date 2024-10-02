@@ -8,8 +8,8 @@ from fpdf import FPDF, FPDF_VERSION
 from fpdf.enums import AccessPermission
 from omegaconf import DictConfig
 
-from src import all_fonts, logger, conf
-from src.preprocess_attendees import Attendee
+from participation_certificate import all_fonts, logger, conf
+from participation_certificate.preprocess_attendees import Attendee
 
 
 class PDF(FPDF):
