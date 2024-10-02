@@ -1,6 +1,6 @@
 [project]
 name = "Certificates of Participation"
-version = "0.1.0"
+version = "0.5.0"
 description = "Generate participation certificates for events."
 authors = [
     {name = "Alexander CS Hendorf", email = "hendorf@gmail.com"}
