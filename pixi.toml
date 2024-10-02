@@ -1,6 +1,6 @@
 [project]
 name = "Certificates of Participation"
-version = "0.5.0"
+version = "0.6.0"
 description = "Generate participation certificates for events."
 authors = ["Alexander CS Hendorf <hendorf@gmail.com>"]
 channels = ["conda-forge"]
