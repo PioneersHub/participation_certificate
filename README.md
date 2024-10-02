@@ -26,4 +26,4 @@ This repo will be help you with the generation of the certificates.
 
 [Pioneers Hub](https://www.pioneershub.org/en/) helps to build and maintain thriving communities of experts in tech and
 research to share knowledge, collaborate and innovate together.
-![Pioneers Hub Logo](assets/images/Pioneers-Hub-Logo-vereinfacht-inline.svg)
+![Pioneers Hub Logo](docs/assets/images/Pioneers-Hub-Logo-vereinfacht-inline.svg)

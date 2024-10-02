@@ -28,10 +28,10 @@ This repo will be help you with the generation of the certificates but does requ
 Main library used: [fpdf2](https://py-pdf.github.io/fpdf2/index.html)
 
 Sample PDF  
-<img src="graphics/example_certificate.png" style="width: 75%;">
+<img src="assets/images/example_certificate.png" style="width: 75%;">
 
 Sample Website for Validation  
-<img src="graphics/example-validation.png" style="width: 75%;">
+<img src="assets/images/example-validation.png" style="width: 75%;">
 
 
 ## ⭐️ Four-Step Process
