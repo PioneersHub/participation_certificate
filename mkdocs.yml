@@ -13,7 +13,10 @@ nav:
   - Design & Ship PDFs at Ease: index.md
   - installation.md
   - walkthrough.md
-  - bestpractice.md
+  - Best Practices: bestpractice.md
+  - License: license.md
+  - Pioneers Hub website: https://pioneershub.org/
+
 
 theme:
   name: material
@@ -26,8 +29,23 @@ theme:
     - navigation.instant
   site_url: https://pioneershub.github.io/participation_certificate/
 
+
 markdown_extensions:
+  - attr_list
   - admonition
+  - pymdownx.magiclink
+  - pymdownx.snippets:
+      check_paths: true
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+      slugify: !!python/object/apply:pymdownx.slugs.slugify
+        kwds:
+          case: lower
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - toc:
+      permalink: "¤"
   - pymdownx.superfences:
       custom_fences:
         - name: mermaid
@@ -44,6 +62,8 @@ plugins:
         color: "#000000"
   - search
   - tags
+  - glightbox
+  - open-in-new-tab
 
 extra:
   consent:
