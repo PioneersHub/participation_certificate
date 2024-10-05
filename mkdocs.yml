@@ -76,6 +76,12 @@ extra:
     actions:
       - accept
       - manage
+    version:
+      provider: mike
+      default: stable
+
+hooks:
+  - scripts/hook_copyright_year.py
 
 # Copyright
 copyright: >
