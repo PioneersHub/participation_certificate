@@ -33,7 +33,5 @@ jobs:
       - run: pip install omegaconf
       - name: Build site
         run: mkdocs build
-      - name: Add logo to social cards
-        run: python participation_certificate/usr/add_logo_to_social_cards.py
       - name: Deploy to GitHub pages
         run: mkdocs gh-deploy --force
