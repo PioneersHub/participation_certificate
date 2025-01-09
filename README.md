@@ -1,4 +1,4 @@
-# 🎨 Design & 🚢 Ship 📜 PDFs
+# Certificate of Participation
 
 Certificate of Participation: Create thousands of signed, secure PDFs that easy to validate.
 
