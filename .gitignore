@@ -167,3 +167,10 @@ _*/
 graphics
 config_local.yaml
 !.gitignore
+
+# Code Assistants
+CLAUDE.local.md
+CLAUDE.md
+.claude
+.augementcode
+.roo
