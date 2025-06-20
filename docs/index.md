@@ -6,8 +6,8 @@ This is a boilerplate repository.
 
 |                         | What does that mean?                               |
 |-------------------------|----------------------------------------------------|
-| signed                  | PDFs are digitally signed and cannot be altered    |  
-| secure                  | disallow features like copying text, altering      |                            | 
+| signed                  | PDFs are digitally signed and cannot be altered    |
+| secure                  | disallow features like copying text, altering      |                            |
 | validated via a website | A link to your website to confirm the authenticity |
 
 The PDFs that can be used e.g., for
@@ -27,10 +27,10 @@ This repo will be help you with the generation of the certificates but does requ
 
 Main library used: [fpdf2](https://py-pdf.github.io/fpdf2/index.html)
 
-Sample PDF  
+Sample PDF
 <img src="assets/images/example_certificate.png" style="width: 75%;">
 
-Sample Website for Validation  
+Sample Website for Validation
 <img src="assets/images/example-validation.png" style="width: 75%;">
 
 

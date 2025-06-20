@@ -1,6 +1,6 @@
 [project]
-name = "Certificates of Participation"
-version = "0.7.4"
+name = "participation-certificate"
+version = "0.9.0"
 description = "Generate participation certificates for events."
 authors = [
     {name = "Alexander CS Hendorf", email = "hendorf@gmail.com"}
@@ -11,13 +11,57 @@ classifiers = [
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.12",
 ]
+requires-python = ">=3.12"
+dependencies = [
+    "colorama",
+    "structlog",
+    "rich",
+    "fpdf2",
+    "pdfrw",
+    "pydantic[email]",
+    "packaging",
+    "wheel",
+    "endesive",
+    "omegaconf",
+    "pytanis[all]",
+    "pandas>=2.2.2",
+    "openpyxl>=3.1.2",
+    "pikepdf>=9.0.0",
+    "scikit-learn>=1.5.0",
+    "requests>=2.31.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "pytest-md",
+    "pytest-emoji",
+    "hypothesis",
+    "pytest-cov",
+    "ruff>=0.4.8",
+    "mypy",
+    "types-requests",
+    "pre-commit",
+]
+docs = [
+    "mkdocs>=1.6.1,<2",
+    "mkdocs-material[imaging]>=9.5.39,<10",
+    "pymdown-extensions>=10.11.2,<11",
+    "mkdocs-glightbox>=0.4.0,<0.5",
+    "mkdocs-open-in-new-tab>=1.0.5,<2",
+]
+build = [
+    "bumpversion>=0.6.0,<0.7",
+]
 
 [build-system]
-requires = ["setuptools"]
+requires = ["setuptools>=64", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project.urls]
 Homepage = "https://github.com/PioneersHub/participation_certificate"
+Repository = "https://github.com/PioneersHub/participation_certificate"
+Documentation = "https://pioneershub.github.io/participation_certificate/"
 
 [tool.ruff]
 line-length = 100
@@ -59,4 +103,8 @@ ignore = [
 [tool.ruff.format]
 quote-style = "double"
 indent-style = "space"
-docstring-code-format = "reStructuredText"
+docstring-code-format = true
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["participation_certificate*"]

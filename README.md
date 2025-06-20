@@ -6,8 +6,8 @@ This is a boilerplate repository.
 
 |                         | What does that mean?                               |
 |-------------------------|----------------------------------------------------|
-| signed                  | PDFs are digitally signed and cannot be altered    |  
-| secure                  | disallow features like copying text, altering      |                            | 
+| signed                  | PDFs are digitally signed and cannot be altered    |
+| secure                  | disallow features like copying text, altering      |                            |
 | validated via a website | A link to your website to confirm the authenticity |
 
 The PDFs that can be used e.g., for

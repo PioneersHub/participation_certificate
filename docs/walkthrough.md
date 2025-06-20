@@ -2,7 +2,7 @@
 
 **Certificate of Attendance for a Conference**
 
-We want to create certificates for attendees of the "PyCon DE & PyData Berlin 2024" conference.  
+We want to create certificates for attendees of the "PyCon DE & PyData Berlin 2024" conference.
 We have a list of all tickets sold including the names of the participants.
 
 ### 0. Configuration
@@ -14,7 +14,7 @@ Use `config_local.yaml` for your local settings, do not change `config.yaml`.
 
 ### 1. Prepare attendees' data
 
-Preprocess data: per certificate create one `Attendee`  instance.  
+Preprocess data: per certificate create one `Attendee`  instance.
 `Attendee` is a [pydantic](https://pydantic.dev) model.
 
 ```python
