@@ -1,17 +1,17 @@
-from pytanis.helpdesk import HelpDeskClient, Recipient, Mail, MailClient
 import json
-from pathlib import Path
-from pydantic import BaseModel
-from participation_certificate import conf, logger
 import shutil
-from participation_certificate.models.attendee import Attendee
+from pathlib import Path
 
-helpdesk_client = HelpDeskClient()
-helpdesk_client.set_throttling(1, 10)
+from pydantic import BaseModel
+from pytanis.helpdesk import Mail, Recipient
+
+from participation_certificate import conf, logger
+from participation_certificate.email_providers import get_email_provider
+from participation_certificate.models.attendee import Attendee
 
 
 def message(attendee: Attendee):
-    """ Message to be sent to the attendees with the certificate link """
+    """Message to be sent to the attendees with the certificate link"""
     message_text = f"""
 Dear {attendee.first_name},
 
@@ -47,7 +47,7 @@ def collect_certificates():
             continue
         logger.info(f"Processing {directory.name}")
         jsonf = list(directory.glob("*.json"))[0]
-        with open(jsonf, "r") as f:
+        with open(jsonf) as f:
             data = json.load(f)
             attendee = Attendee(**data)
         # only one pdf-file is expected
@@ -60,28 +60,45 @@ def collect_certificates():
 
 
 def send_certificates(jobs: list[Job], dry_run=False):
-    # Conference Tickets
-    mail_client = MailClient()
-    for i, job in enumerate(jobs, 1):
+    # Get email provider from configuration
+    provider_name = conf.email.provider
+    provider_config = conf.email.get(provider_name, {})
 
+    try:
+        email_provider = get_email_provider(provider_name, provider_config)
+    except Exception as e:
+        logger.error(f"Failed to initialize email provider: {e}")
+        return
+
+    logger.info(f"Using {provider_name} email provider to send {len(jobs)} certificates")
+
+    # Send certificates
+    for i, job in enumerate(jobs, 1):
         recipients = [
-            Recipient(name=job.attendee.full_name, email=job.attendee.email, address_as=job.attendee.first_name)]
-        # noinspection PyProtectedMember
+            Recipient(
+                name=job.attendee.full_name,
+                email=job.attendee.email,
+                address_as=job.attendee.first_name,
+            )
+        ]
+
         mail = Mail(
             subject=f"Certificate of Attendance: {conf.event_full_name}",
             text=message(attendee=job.attendee),
-            team_id=conf.email.team_id,
             recipients=recipients,
-            agent_id=helpdesk_client._config.HelpDesk.account,
-            status="closed",
         )
-        responses, errors = mail_client.send(mail, dry_run=dry_run)
+
+        # Add provider-specific fields if needed
+        if provider_name == "helpdesk" and conf.email.helpdesk.get("team_id"):
+            mail.team_id = conf.email.helpdesk.team_id
+
+        logger.info(f"Sending certificate {i}/{len(jobs)} to {job.attendee.email}")
+
+        responses, errors = email_provider.send(mail, dry_run=dry_run)
         if errors:
             logger.error(f"Error sending mail to {job.attendee.email}: {errors}")
 
 
 if __name__ == "__main__":
     collect = collect_certificates()
-    send_certificates(
-        collect, dry_run=False
-    )
+    send_certificates(collect, dry_run=False)

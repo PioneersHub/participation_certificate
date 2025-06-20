@@ -135,8 +135,24 @@ metadata:
   author: "Author"
   keywords: "A, B, C"
 # ########################################
-# OTHER / OPTIONAL
+# EMAIL CONFIGURATION
 # ########################################
 email:
-  team_id: ""
+  # Email provider to use: "helpdesk" or "brevo"
+  provider: "helpdesk"
+
+  # HelpDesk provider configuration
+  helpdesk:
+    team_id: ""
+    agent_id: ""  # Optional, will use account default if not provided
+    throttle_requests: 1
+    throttle_period: 10
+
+  # Brevo provider configuration
+  brevo:
+    # API key or path to file containing API key
+    api_key: ""  # Or use api_key_path below
+    api_key_path: "_secret/brevo_key"  # Relative to project root
+    sender_name: "Your Event Name"
+    sender_email: "noreply@example.com"
 # ########################################

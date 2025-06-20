@@ -1,14 +1,13 @@
 import json
 import secrets
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
 
 from fpdf import FPDF, FPDF_VERSION
 from fpdf.enums import AccessPermission
 from omegaconf import DictConfig
 
-from participation_certificate import all_fonts, logger, conf
+from participation_certificate import all_fonts, conf, logger
 from participation_certificate.preprocess_attendees import Attendee
 
 
@@ -76,11 +75,14 @@ class Certificates:
     Generate PDF certificates for attendees of an event.
     """
 
-    def __init__(self, attendees: list[Attendee],
-                 event: str,
-                 permissions: str | None = None,
-                 sign_key: Path | None = None,
-                 sign_password: bytes | None = None):
+    def __init__(
+        self,
+        attendees: list[Attendee],
+        event: str,
+        permissions: str | None = None,
+        sign_key: Path | None = None,
+        sign_password: bytes | None = None,
+    ):
         """
 
         :param attendees: iterable of `Attendee`'s models, contains information about the person.
@@ -134,23 +136,37 @@ class Certificates:
                         fpdf.text(x=x, y=y, txt=text)
                 elif "\n" in text:
                     fpdf.x, fpdf.y = x, y
-                    fpdf.multi_cell(width, max_line_height=size * 1.25,
-                                    text=text,
-                                    markdown=True)
+                    fpdf.multi_cell(width, max_line_height=size * 1.25, text=text, markdown=True)
                 else:
                     fpdf.text(x=x, y=y, txt=text)
 
             for g in conf.layout.graphics:
                 x, y = g.position
                 link = g.get("link", "")
-                fpdf.image(
-                    conf.dirs.graphics / g.name, x=x, y=y, w=g.width, link=link)
+                fpdf.image(conf.dirs.graphics / g.name, x=x, y=y, w=g.width, link=link)
 
             fpdf.set_title(
-                render_text(conf.metadata.title, attendee=attendee, event_full_name=conf.event_full_name))
-            fpdf.set_subject(render_text(conf.metadata.description, attendee=attendee, event_full_name=conf.event_full_name))
-            fpdf.set_author(render_text(conf.metadata.author, attendee=attendee, event_full_name=conf.event_full_name))
-            fpdf.set_keywords(render_text(conf.metadata.keywords, attendee=attendee, event_full_name=conf.event_full_name))
+                render_text(
+                    conf.metadata.title, attendee=attendee, event_full_name=conf.event_full_name
+                )
+            )
+            fpdf.set_subject(
+                render_text(
+                    conf.metadata.description,
+                    attendee=attendee,
+                    event_full_name=conf.event_full_name,
+                )
+            )
+            fpdf.set_author(
+                render_text(
+                    conf.metadata.author, attendee=attendee, event_full_name=conf.event_full_name
+                )
+            )
+            fpdf.set_keywords(
+                render_text(
+                    conf.metadata.keywords, attendee=attendee, event_full_name=conf.event_full_name
+                )
+            )
             fpdf.set_creator(f"py-pdf/fpdf{FPDF_VERSION}")
             fpdf.set_creation_date(datetime.now(UTC))
             # TODO MOVE TO config END
@@ -158,8 +174,11 @@ class Certificates:
             fpdf.set_encryption(
                 # the pdf are supposed to never be altered by anyone: we use a random, unsaved password.
                 owner_password=secrets.token_urlsafe(10),
-                permissions=(AccessPermission.PRINT_LOW_RES | AccessPermission.PRINT_HIGH_RES
-                             if self.permissions is None else self.permissions)
+                permissions=(
+                    AccessPermission.PRINT_LOW_RES | AccessPermission.PRINT_HIGH_RES
+                    if self.permissions is None
+                    else self.permissions
+                ),
             )
 
             if self.sign_key is not None:
