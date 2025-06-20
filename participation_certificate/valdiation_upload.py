@@ -1,6 +1,6 @@
 import json
-from pathlib import Path
 import random
+from pathlib import Path
 
 from participation_certificate import conf, logger
 from participation_certificate.models.attendee import Attendee
@@ -11,10 +11,12 @@ static_pages_website = conf.static_pages_website
 
 def create_static_pages(replace=False):
     for record in path_to_certificates.rglob("*.json"):
-        with open(record, "r") as f:
+        with open(record) as f:
             data = json.load(f)
             attendee = Attendee(**data)
-            logger.info(f"Processing {attendee.full_name}->{obfuscate_name(attendee.full_name)} {attendee.uuid}")
+            logger.info(
+                f"Processing {attendee.full_name}->{obfuscate_name(attendee.full_name)} {attendee.uuid}"
+            )
             save_to = Path(conf.static_pages_website) / attendee.uuid / "contents.lr"
             if save_to.exists() and not replace:
                 continue

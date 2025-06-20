@@ -1,0 +1,107 @@
+"""Example email provider template.
+
+Copy this file and modify to create your own email provider.
+"""
+
+from typing import Any
+
+from pytanis.helpdesk import Mail
+
+from participation_certificate import logger
+
+from .base import EmailProvider
+
+
+class ExampleProvider(EmailProvider):
+    """Example email provider implementation."""
+
+    def __init__(self, config: dict[str, Any]) -> None:
+        """Initialize the provider with configuration.
+
+        Args:
+            config: Provider-specific configuration dictionary.
+        """
+        super().__init__(config)
+        # Initialize your provider-specific attributes here
+        self.api_key = config.get("api_key", "")
+        self.api_url = config.get("api_url", "https://api.example.com/send")
+
+    def validate_config(self) -> None:
+        """Validate the provider configuration.
+
+        Raises:
+            ValueError: If required configuration is missing or invalid.
+        """
+        # Check for required configuration keys
+        if not self.config.get("api_key"):
+            raise ValueError("Example provider requires 'api_key' in configuration")
+
+        # Add any other validation logic here
+        if not self.config.get("sender_email"):
+            raise ValueError("Example provider requires 'sender_email' in configuration")
+
+    def send(self, mail: Mail, dry_run: bool = False) -> tuple[Any, list[str]]:
+        """Send an email using the Example provider.
+
+        Args:
+            mail: Email object containing recipients, subject, body, etc.
+            dry_run: If True, simulate sending without actually sending.
+
+        Returns:
+            Tuple of (response, errors) where:
+                - response: Provider-specific response object/dict
+                - errors: List of error messages if any
+        """
+        errors = []
+
+        logger.info(
+            f"{'[DRY RUN] ' if dry_run else ''}Sending email via Example provider to "
+            f"{len(mail.recipients)} recipient(s): {mail.subject}"
+        )
+
+        if dry_run:
+            # Return simulated response for dry run
+            return {"status": "dry_run", "recipients": len(mail.recipients)}, errors
+
+        try:
+            # Implement your actual email sending logic here
+            # Example:
+            # response = requests.post(
+            #     self.api_url,
+            #     headers={"Authorization": f"Bearer {self.api_key}"},
+            #     json={
+            #         "to": [r.email for r in mail.recipients],
+            #         "subject": mail.subject,
+            #         "body": mail.text,
+            #     }
+            # )
+
+            # For this template, we'll just return a mock response
+            response = {"status": "sent", "message_id": "example-123"}
+            return response, errors
+
+        except Exception as e:
+            error_msg = f"Failed to send via Example provider: {str(e)}"
+            logger.error(error_msg)
+            errors.append(error_msg)
+            return None, errors
+
+    @property
+    def provider_name(self) -> str:
+        """Return the provider name for logging/debugging."""
+        return "Example"
+
+
+# To use this provider:
+# 1. Copy this file and rename it (e.g., sendgrid.py)
+# 2. Rename the class (e.g., SendGridProvider)
+# 3. Implement the actual email sending logic in send()
+# 4. Register it in __init__.py:
+#    from .sendgrid import SendGridProvider
+#    PROVIDERS["sendgrid"] = SendGridProvider
+# 5. Add configuration to config.yaml:
+#    email:
+#      provider: "sendgrid"
+#      sendgrid:
+#        api_key: "your-api-key"
+#        sender_email: "noreply@example.com"

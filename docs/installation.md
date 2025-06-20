@@ -2,30 +2,58 @@
 
 ## Environment
 
-This project uses Pixi for package management. Pix supports Windows, MacOS, and Linux.
-See the [Pixi documentation](https://pixi.sh/latest/) for more information how to install pixi.
+This project uses uv for package management. uv is a fast Python package and project manager that supports Windows, MacOS, and Linux.
 
-To install the environment, run the following command for the project root directory:
+### Install uv
 
 ```shell
-pixi install
+# On macOS and Linux
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# On Windows
+powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
+
+# Or with pip
+pip install uv
+```
+
+### Setup the Project
+
+To install the environment, run the following commands from the project root directory:
+
+```shell
+# Create virtual environment
+uv venv
+
+# Activate the environment
+# On macOS/Linux:
+source .venv/bin/activate
+# On Windows:
+.venv\Scripts\activate
+
+# Install the project in editable mode with all dependencies
+uv pip install -e ".[dev,docs,build]"
+
+# Or install from requirements files
+uv pip install -r requirements.txt
+uv pip install -r requirements-dev.txt
 ```
 
 ## Documentation
 ### Preview
 
-Run  
+Run
 ```
 mkdocs serve
-```  
+```
 to start the live-reloading docs server.
 
 The local website is run
 on [http://127.0.0.1:8000/participation_certificate/](http://127.0.0.1:8000/pytube/)
 
-MacOS-Error 
+MacOS-Error
 >no library called "cairo-2" was found…
- 
+
 can be fixed with:
 ```
 export DYLD_FALLBACK_LIBRARY_PATH=/opt/homebrew/lib
