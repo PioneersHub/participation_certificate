@@ -9,13 +9,14 @@ from participation_certificate.models.attendee import Attendee
 
 
 class ProcessAttendees:
-    """ Process data to fit the Attendee model."""
+    """Process data to fit the Attendee model."""
+
     def __init__(
-            self,
-            xlsx_file: Path,
-            columns: dict[str, str],
-            select_func: Callable[[..., pd.DataFrame], pd.DataFrame] | None = None,
-            transformers: dict[str, Callable[[..., Any], Any]] | None = None
+        self,
+        xlsx_file: Path,
+        columns: dict[str, str],
+        select_func: Callable[[..., pd.DataFrame], pd.DataFrame] | None = None,
+        transformers: dict[str, Callable[[..., Any], Any]] | None = None,
     ):
         self.attendees = []
         self.xlsx_file = xlsx_file
@@ -48,7 +49,9 @@ class ProcessAttendees:
         df["unique"] = df["Ticket Full Name"] + df["Ticket Email"]
         df = df.drop_duplicates(subset="unique")
         df = df.drop(columns=["unique"])
-        logger.info(f"Removed duplicates (same name, email combination): {len(df)} attendees in list.")
+        logger.info(
+            f"Removed duplicates (same name, email combination): {len(df)} attendees in list."
+        )
 
         logger.info("Creating attendees list.")
         attendees = []

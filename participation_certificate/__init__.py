@@ -1,4 +1,4 @@
-__version__ = "0.7.4"
+__version__ = "0.9.0"
 
 import logging
 from pathlib import Path
@@ -65,8 +65,7 @@ structlog.configure(
     wrapper_class=structlog.make_filtering_bound_logger(logging.DEBUG),
     context_class=dict,
     logger_factory=structlog.PrintLoggerFactory(),
-    cache_logger_on_first_use=False
-
+    cache_logger_on_first_use=False,
 )
 structlog.configure(processors=structlog.get_config()["processors"][:-1] + [cr])
 logger = structlog.get_logger()

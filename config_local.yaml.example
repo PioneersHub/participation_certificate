@@ -1,0 +1,26 @@
+# Example local configuration file
+# Copy this to config_local.yaml and update with your values
+
+# Event details
+event_short_name: "pycon-de-2024"
+event_full_name: "PyCon DE & PyData Berlin 2024"
+certificates_url: "https://example.com/certificates/"
+static_pages_website: "https://example.com/validate/"
+
+# Email configuration
+email:
+  # Choose your email provider: "helpdesk" or "brevo"
+  provider: "brevo"
+
+  # HelpDesk configuration (if using helpdesk provider)
+  helpdesk:
+    team_id: "your-helpdesk-team-id"
+    agent_id: "your-helpdesk-agent-id"  # Optional
+
+  # Brevo configuration (if using brevo provider)
+  brevo:
+    api_key_path: "_secret/brevo_key"  # Path to file with API key
+    # Or use direct API key (not recommended for production):
+    # api_key: "your-brevo-api-key"
+    sender_name: "PyCon DE 2024"
+    sender_email: "certificates@pycon.de"
