@@ -22,11 +22,14 @@
 # as_set = {x["requester"]["email"].lower() for x in all_res}
 # a = 44
 
-import base64
 import hashlib
-from pydantic import UUID4, BaseModel, EmailStr
 from pathlib import Path
-invalidate = list(zip("""Jochen Stein
+
+from pydantic import UUID4
+
+invalidate = list(
+    zip(
+        """Jochen Stein
 Jonas Kapitzke
 
 
@@ -107,7 +110,8 @@ Bita Najdahmadi
 Bita Najdahmadi
 Bita Najdahmadi
 Maximilian Robert
-Christian Lengert""".split("\n"), """SUHJ-1
+Christian Lengert""".split("\n"),
+        """SUHJ-1
 LMYC-1
 STPS-1
 QJGH-1
@@ -188,16 +192,23 @@ FW5Y-1
 FW5Y-2
 FW5Y-3
 UXEV-1
-4NHX-1""".split("\n")))
+4NHX-1""".split("\n"),
+        strict=False,
+    )
+)
 
 for name, ticket in invalidate:
-    hash_this = ''.join([x.upper() for x in name if x.isalnum()]) + ticket.strip()
+    hash_this = "".join([x.upper() for x in name if x.isalnum()]) + ticket.strip()
     hsh = hashlib.sha512()
     hsh.update(hash_this.encode("utf-8"))
     # stable uuid for webservice, this uuid will always be the same for the same attendee
     # allows reruns without cleanup
     uuid = str(UUID4(hsh.hexdigest()[:32]))
-    p = Path("/Users/hendorf/code/pycommunity/pyconde_www/website/content/attendee-certificate")/uuid/"contents.lr"
+    p = (
+        Path("/Users/hendorf/code/pycommunity/pyconde_www/website/content/attendee-certificate")
+        / uuid
+        / "contents.lr"
+    )
     if p.exists():
         print(uuid, "exists")
         p.open("w").write("""_model: validate_certificate
@@ -211,7 +222,12 @@ conference: INVALID CERTIFICATE
 hash: UNKNOWN
 ---
 _discoverable: no""")
-    c = Path("/Users/hendorf/code/pioneershub/participation_certificate/_certificates/2024-pycon_de_upload") / f"{uuid}.pdf"
+    c = (
+        Path(
+            "/Users/hendorf/code/pioneershub/participation_certificate/_certificates/2024-pycon_de_upload"
+        )
+        / f"{uuid}.pdf"
+    )
     if c.exists():
         print(uuid, "PDF exists")
         c.rename(c.with_suffix(".invalid.pdf"))
