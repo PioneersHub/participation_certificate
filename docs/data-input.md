@@ -74,7 +74,7 @@ attendees_table = "your-event-attendees.xlsx"
 # Map your Excel columns to the required fields
 load_columns = {
     "Ticket Full Name": "full_name",
-    "Ticket First Name": "first_name", 
+    "Ticket First Name": "first_name",
     "Ticket Email": "email",
     "Ticket Reference": "ticket_reference",
     "Ticket": "attended_how",
@@ -92,10 +92,10 @@ def select_rows(data_frame: pd.DataFrame) -> pd.DataFrame:
     data_frame = data_frame[
         ~data_frame["Ticket"].str.contains("Social|luggage|Childcare|Keynote|TEST")
     ].reindex()
-    
+
     # Example: Remove cancelled tickets
     data_frame = data_frame[~data_frame["Void Status"].fillna("").str.contains("voided")]
-    
+
     return data_frame
 ```
 
@@ -156,7 +156,7 @@ engine = sqlalchemy.create_engine('postgresql://user:pass@host/db')
 
 # Query attendees
 query = """
-    SELECT 
+    SELECT
         full_name as "Ticket Full Name",
         first_name as "Ticket First Name",
         email as "Ticket Email",
@@ -179,19 +179,19 @@ The system automatically handles:
 ## Common Issues and Solutions
 
 ### Issue: Column Not Found
-**Error**: `KeyError: 'Ticket Full Name'`  
+**Error**: `KeyError: 'Ticket Full Name'`
 **Solution**: Check your Excel column names match exactly (including spaces and capitalization)
 
 ### Issue: No Attendees Loaded
-**Cause**: All records filtered out by selection function  
+**Cause**: All records filtered out by selection function
 **Solution**: Review your filter criteria and check the data
 
 ### Issue: Email Validation Errors
-**Error**: `validation error for Attendee`  
+**Error**: `validation error for Attendee`
 **Solution**: Check for invalid email formats in your data
 
 ### Issue: File Not Found
-**Error**: `FileNotFoundError`  
+**Error**: `FileNotFoundError`
 **Solution**: Ensure file is in `_data/` directory and path is correct
 
 ## Example: Complete Configuration
