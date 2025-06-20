@@ -11,8 +11,10 @@ repo_url: https://github.com/PioneersHub/participation_certificate
 #
 nav:
   - Design & Ship PDFs at Ease: index.md
-  - installation.md
-  - walkthrough.md
+  - Installation: installation.md
+  - Getting Started:
+    - Data Input Guide: data-input.md
+    - Complete Walkthrough: walkthrough.md
   - Best Practices: bestpractice.md
   - License: license.md
   - Pioneers Hub website: https://pioneershub.org/

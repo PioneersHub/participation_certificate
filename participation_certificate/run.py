@@ -30,6 +30,7 @@ if __name__ == "__main__":
         return data_frame
 
     # update columns in the DataFrame based on the info
+    # Transform ticket types to attended_how field: must be either "on site" or "remotely"
     transformers = {"Ticket": lambda x: "remotely" if "online" in x.lower() else "on site"}
     # noinspection PyTypeChecker
     participants = ProcessAttendees(

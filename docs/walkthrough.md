@@ -14,22 +14,62 @@ Use `config_local.yaml` for your local settings, do not change `config.yaml`.
 
 ### 1. Prepare attendees' data
 
-Preprocess data: per certificate create one `Attendee`  instance.
-`Attendee` is a [pydantic](https://pydantic.dev) model.
+The system needs attendee data to generate certificates. Each certificate requires one `Attendee` instance (a [pydantic](https://pydantic.dev) model).
 
+#### Data Input Methods
+
+**Option 1: Excel File (Default)**
 ```python
-# noinspection PyUnresolvedReferences,PyUnboundLocalVariable
-class Attendee(Attendee):
-    full_name: str
-    first_name: str
-    email: EmailStr
-    ticket_reference: str
-    attended_how: str
-    hash: str | None = None
-    uuid: str | None = None
+# Place your Excel file in _data/ directory
+attendees_table = "attendees-pyconde-2024.xlsx"
+
+# Map Excel columns to required fields
+load_columns = {
+    "Ticket Full Name": "full_name",
+    "Ticket First Name": "first_name",
+    "Ticket Email": "email",
+    "Ticket Reference": "ticket_reference",
+    "Ticket": "attended_how",
+}
 ```
 
-Example: `[preprocess_attendees.py](src%2Fpreprocess_attendees.py)`
+**Option 2: CSV File**
+```python
+import pandas as pd
+df = pd.read_csv("_data/attendees.csv")
+# Apply same column mapping and processing
+```
+
+**Option 3: API Data**
+```python
+import requests
+response = requests.get("https://your-api.com/attendees")
+attendees_data = response.json()
+# Convert to DataFrame and process
+```
+
+#### The Attendee Model
+
+```python
+class Attendee(BaseModel):
+    full_name: str           # Full name for the certificate
+    first_name: str          # First name for personalization
+    email: EmailStr          # Valid email for delivery
+    ticket_reference: str    # Unique ticket ID
+    attended_how: str        # Must be either "on site" or "remotely"
+    hash: str | None = None  # Auto-generated unique hash
+    uuid: str | None = None  # Auto-generated UUID
+```
+
+#### Data Processing Pipeline
+
+1. **Load**: Read from your data source
+2. **Filter**: Remove non-participants (social events, cancelled tickets)
+3. **Transform**: Standardize values (e.g., "Online Ticket" → "remotely")
+4. **Validate**: Remove incomplete records
+5. **Deduplicate**: One certificate per person (name + email combination)
+
+Example: See `participation_certificate/preprocess_attendees.py` and the [Data Input Guide](data-input.md) for detailed instructions.
 
 Output: `list[Attendee]`
 
