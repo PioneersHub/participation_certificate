@@ -1,0 +1,223 @@
+# LOCAL configuration, any key here will overwrite the default configuration
+# NEVER COMMIT THIS FILE TO GIT
+# ########################################
+# METADATA
+# #########################################
+# short name of the event, used in paths
+event_short_name: "pyconde25"
+# full name of the event, used in content
+event_full_name: "PyCon DE & PyData 2025"
+# local path to write the static pages
+# this can be used to validate certificates via a website
+static_pages_website: "/Users/hendorf/code/pioneershub/pyconde-website/content/certificates"
+# url to download certificates
+certificates_url: "https://s3.eu-central-1.amazonaws.com/certificates.pycon.de/2025/"
+# ########################################
+# DIRECTORIES
+# ########################################
+# ########################################
+# FONTS
+# ########################################
+default_font: "Helvetica Neue"
+additional_fonts:
+   - "Helvetica Neue-Bold"
+# ########################################
+# OTHER
+# Helpdesk team to send certificates
+email:
+   team_id: "22c22fd0-db59-4ee0-9a76-622d7e9dda3e"
+# ########################################
+# LAYOUT
+# ########################################
+layout:
+  default:
+    background:
+      color:
+        - 0
+        - 0
+        - 0  # black
+    font:
+      size: 12
+      name: "poppins-regular"
+      style: ""
+      color:
+        - 0
+        - 0
+        - 0  # black
+    width: 200
+  background:
+    # Items are place on top of each other.
+    # Add a sequence of items to be placed on the canvas.
+    # Currently only rectangles are supported.
+    # Rectangle as the background, will look like a frame.
+    - color:
+      - 61
+      - 164
+      - 51  # some green
+      width: 0 # full width
+      height: 0 # full height
+      position:
+        - 0
+        - 0
+      # second rectangle for contents
+    - color:
+      - 255
+      - 255
+      - 255  # white
+      width: 801.89
+      height: 555.28
+      position:
+      - 20
+      - 20
+  text_items:
+    # text: "str"
+    # position: tuple(x, y)
+    # font:
+      # name: "str valid font name (optional, fallbacks to default)"
+      # size: number (optional, fallbacks to default)
+      # style: B, I, BI  (optional, fallbacks to "")
+    - text: "Certificate of Attendance"
+      position:
+      - 45
+      - 98
+      font:
+        name: "poppins-bold"
+        size: 48
+        style: ""
+    - text: "This is to certify that"
+      position:
+      - 49
+      - 135
+      font:
+        size: 14
+    - text: "{attendee.full_name}"
+      position:
+      - 50
+      - 180
+      font:
+        name: "poppins-bold"
+        size: 24
+    - text: "No. {attendee.hash}"
+      position:
+      - 532
+      - 128
+      font:
+        name: "poppins-bold"
+        size: 24
+    - text:
+        - has attended the **{event_full_name}**
+        - conference {attendee.attended_how}.
+      position:
+      - 45
+      - 200
+      width: 600
+      font:
+        size: 16
+    - text:
+        - The annual conference covers topics in the domains of
+        - Analytics, Artificial Intelligence, Community, DevOps,
+        - Ethics, LLMs, Machine Learning, MLOps, Software
+        - Engineering and Web Development around the
+        - Python programming language.
+        - ""
+        - The conference is run by Python Softwareverband e.V.
+        - in cooperation with NumFOCUS Inc.
+        - ""
+        - Signed
+        - ""
+        - ""
+        - ""
+        - Alexander CS Hendorf
+      position:
+      - 45
+      - 242
+      width: 600
+      font:
+        size: 14
+    - text:
+        - as Chairman of the Board of Directors of
+        - Python Softwareverband e.V.
+      position:
+      - 45
+      - 445
+      width: 600
+      font:
+        size: 12
+    - text: "* according to our records a named ticket was assigned to this name"
+      position:
+      - 816
+      - 250
+      font:
+        size: 6
+      rotate: 90
+  graphics:
+    - name: "AH-Signature.png"
+      position:
+        - 70
+        - 370
+      width: 80
+    - name: "24-snake.svg"
+      position:
+        - 400
+        - 160
+      width: 440
+    - name: "PySV_print_CMYK_1-1-outline+url.eps"
+      position:
+        - 45
+        - 500
+      width: 75
+      link: https://pysv.org
+    - name: "PyConDE.svg"
+      position:
+        - 125
+        - 500
+      width: 40
+      link: https://pycon.de
+    - name: "NumFocus_LRG_WHITE-BG.png"
+      position:
+        - 173
+        - 505
+      width: 75
+      link: https://numfocus.org
+    - name: "PyData-Berlin.svg"
+      position:
+        - 255
+        - 500
+      width: 75
+      link: https://berlin.pydata.org
+    - name: "Pioneers Hub Logo.svg"
+      position:
+        - 333
+        - 500
+      width: 60
+      link: https://pioneershub.de
+  footer:
+    text_items:
+      - position:
+          - 45
+          - -33
+        width: 200
+        font:
+          size: 8
+          name: "poppins-regular"
+          style: ""
+          color:
+            - 77
+            - 170
+            - 220  # blue
+        text: "**[Validate this certificate online]({link}/{attendee.uuid}/)**"
+metadata:
+  description: "The annual conference covers topics in the domains of
+Analytics, Artificial Intelligence, Community, DevOps, Ethics, LLMs, Machine Learning, MLOps, Software Engineering and Web Development around the Python programming
+language. The conference is run by Python Softwareverband e. V. in cooperation with NumFOCUS Inc."
+  title: "PyCon DE & PyData Berlin 2024 - Certificate of Attendance for {attendee.full_name}"
+  author: "Python Softwareverband e.V."
+  keywords: "PyCon DE, PyData Berlin, Python Softwareverband e.V., NumFOCUS Inc., Python, Conference, Certificate, Attendance"
+#######################################
+# Brevo provider configuration
+brevo:
+  # API key or path to file containing API key
+  api_key: ""  # Or use api_key_path below
+  api_key_path: "_secret/brevo_key"  # Relative to project root
+  sender_name: "Your Event Name"
+  sender_email: "noreply@example.com"
