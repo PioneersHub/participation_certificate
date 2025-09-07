@@ -5,9 +5,11 @@ https://www.mkdocs.org/user-guide/configuration/#hooks
 from datetime import datetime
 
 
-def on_config(config, **kwargs):
-    config.copyright = f"Copyright © {datetime.now().year} Your Name"
+def on_config(config, **kwargs):  # noqa: ARG001
+    base_year = 2024
+    current_year = datetime.now().year
+    year_range = f"{base_year}-{current_year}" if current_year > base_year else str(base_year)
     config.copyright = (
-        f'Copyright © 2024{"-" + str(datetime.now().year) if datetime.now().year > 2024 else ""} Pioneers Hub gGmbH – '
+        f"Copyright © {year_range} Pioneers Hub gGmbH – "
         f'<a href="#__consent">Change cookie settings</a>'
     )

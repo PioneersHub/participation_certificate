@@ -32,7 +32,9 @@ def test_pdf_footer():
     pdf.add_font("poppins-regular", "I", conf.dirs.fonts_path / "Poppins/Poppins-Italic.ttf")
     pdf.footer()
     # Check if footer content is as expected (simplified example)
-    assert 28 < pdf.y < 29
+    expected_y_min = 28
+    expected_y_max = 29
+    assert expected_y_min < pdf.y < expected_y_max
 
 
 def test_certificates_initialization():
@@ -45,7 +47,7 @@ def test_certificates_initialization():
 @patch("src.generate_certificates.PDF.output")
 @patch("src.generate_certificates.Path.mkdir")
 @patch("src.generate_certificates.Path.open")
-def test_save_certificate(mock_open, mock_mkdir, mock_output):
+def test_save_certificate(mock_open, mock_mkdir, mock_output):  # noqa: ARG001
     event = "Test Event"
     certificates = Certificates([attendee], event)
     mock_fpdf = Mock()
@@ -141,7 +143,6 @@ class TestValueOrDefault:
     @patch("src.conf", new=test_conf)
     @patch("src.conf.layout.default", new=test_conf.layout.default)
     def test_value_missing_fallback(self):
-        mock_conf = conf
         result = value_or_default(test_conf.layout, ("section1", "key2"))
         assert result == "default_value2"
         result = value_or_default(test_conf.layout, ("section1", "key4", "key5"))

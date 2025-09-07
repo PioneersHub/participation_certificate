@@ -29,170 +29,174 @@ from pydantic import UUID4
 
 invalidate = list(
     zip(
-        """Jochen Stein
-Jonas Kapitzke
-
-
-Renee Chebbo
-Joachim Schmidt
-Dânia Meira
-Erik Price
-Karim Meiborg
-Zoran Štefanić
-René Rivero Arrieta
-Anja Pilz
-Maximilian Seyrich
-Jan Wagner
-Jens Nie
-Alejandro Agustin
-Maryam Pourranjbar
-Martin Schneider
-Anne Ernst
-Tobias Sterbak
-Richard Baffour-Awuah
-Yeonjoo Yoo
-Klaus Wiebe
-
-Juan Luis Cano Rodríguez
-Richard Schulz
-Hafiz Faheim Rehman
-Alexander Vosseler
-Wei Ding
-
-Domenic Gilardoni
-Nikita Kudriavtsev
-Ilnur Ismagilov
-Ekaterina Shvorneva
-Stanislav Sopov
-Kirill Puchkov
-Alexander Fechler
-Irati Rodriguez
-Christian Moreau
-Benjamin Thomas Schwertfeger
-Alessia Cavallo
-Artemii Dubovoi
-Gabrielle Simard-Moore
-Eshan Mushtaq
-Jose Ciurana Cruz
-Soumen Ganguly
-Maximilian Siska
-Bruno Moesch
-Tido Felix Marschall
-Viktoria Könitz
-Patrick Busenius
-Adrian Theopold
-Benjamin Wolff
-Paul Romieu
-Pierre Ouchene
-Océane Haddad
-Domingo Gomes
-Ken McGrady
-Johannes Rieke
-Benjamin Räthlein
-Joshua Carroll
-Gonçalo Faria
-Marko Thiele
-Thuy-Vi Vo-Blaschke
-
-Patrick Hoebeke
-
-Patrick Hoefler
-Lilo Wagner
-Rohit Bhisikar
-Markus Mauder
-Martin Lechner
-Leonard Kern
-Julie Fang
-
-
-
-Bita Najdahmadi
-Bita Najdahmadi
-Bita Najdahmadi
-Maximilian Robert
-Christian Lengert""".split("\n"),
-        """SUHJ-1
-LMYC-1
-STPS-1
-QJGH-1
-DYBB-1
-MCS2-1
-BL7S-1
-UEUI-1
-QY97-1
-ZTLX-1
-DZFZ-1
-FFCS-1
-7YPS-1
-ERBH-1
-4WLT-1
-LVFF-1
-PCLS-1
-5JRK-2
-5JRK-3
-PYIS-1
-N1DY-1
-QXTC-1
-MZ87-1
-WKCB-1
-NNFW-1
-Y7NY-2
-KDEE-1
-AYCV-1
-UY94-1
-XKET-1
-1M3J-2
-DDDP-1
-DDDP-2
-DDDP-3
-DDDP-4
-DDDP-5
-KAP7-1
-H3MV-1
-UVA6-1
-9NPR-1
-QHR6-1
-CJFJ-1
-INCT-1
-JUCD-1
-YDDA-5
-2E8B-1
-6DMR-1
-JHHA-1
-LJ3Y-1
-J7XV-1
-RYCD-1
-8F8D-1
-ZSUC-1
-4DZB-1
-4DZB-2
-CDTP-1
-CDTP-2
-9PJ7-1
-2G4R-1
-MKKJ-1
-DDBL-1
-YXC4-1
-C21K-3
-6RME-1
-KEQJ-2
-E2GD-1
-CYRZ-1
-E8JA-2
-GIEW-3
-YUTR-1
-ZGZ7-1
-2CQC-1
-FMZ8-1
-QMHD-1
-E4ET-1
-E4ET-2
-E4ET-3
-FW5Y-1
-FW5Y-2
-FW5Y-3
-UXEV-1
-4NHX-1""".split("\n"),
+        [
+            "Jochen Stein",
+            "Jonas Kapitzke",
+            "",
+            "",
+            "Renee Chebbo",
+            "Joachim Schmidt",
+            "Dânia Meira",
+            "Erik Price",
+            "Karim Meiborg",
+            "Zoran Štefanić",
+            "René Rivero Arrieta",
+            "Anja Pilz",
+            "Maximilian Seyrich",
+            "Jan Wagner",
+            "Jens Nie",
+            "Alejandro Agustin",
+            "Maryam Pourranjbar",
+            "Martin Schneider",
+            "Anne Ernst",
+            "Tobias Sterbak",
+            "Richard Baffour-Awuah",
+            "Yeonjoo Yoo",
+            "Klaus Wiebe",
+            "",
+            "Juan Luis Cano Rodríguez",
+            "Richard Schulz",
+            "Hafiz Faheim Rehman",
+            "Alexander Vosseler",
+            "Wei Ding",
+            "",
+            "Domenic Gilardoni",
+            "Nikita Kudriavtsev",
+            "Ilnur Ismagilov",
+            "Ekaterina Shvorneva",
+            "Stanislav Sopov",
+            "Kirill Puchkov",
+            "Alexander Fechler",
+            "Irati Rodriguez",
+            "Christian Moreau",
+            "Benjamin Thomas Schwertfeger",
+            "Alessia Cavallo",
+            "Artemii Dubovoi",
+            "Gabrielle Simard-Moore",
+            "Eshan Mushtaq",
+            "Jose Ciurana Cruz",
+            "Soumen Ganguly",
+            "Maximilian Siska",
+            "Bruno Moesch",
+            "Tido Felix Marschall",
+            "Viktoria Könitz",
+            "Patrick Busenius",
+            "Adrian Theopold",
+            "Benjamin Wolff",
+            "Paul Romieu",
+            "Pierre Ouchene",
+            "Océane Haddad",
+            "Domingo Gomes",
+            "Ken McGrady",
+            "Johannes Rieke",
+            "Benjamin Räthlein",
+            "Joshua Carroll",
+            "Gonçalo Faria",
+            "Marko Thiele",
+            "Thuy-Vi Vo-Blaschke",
+            "",
+            "Patrick Hoebeke",
+            "",
+            "Patrick Hoefler",
+            "Lilo Wagner",
+            "Rohit Bhisikar",
+            "Markus Mauder",
+            "Martin Lechner",
+            "Leonard Kern",
+            "Julie Fang",
+            "",
+            "",
+            "",
+            "Bita Najdahmadi",
+            "Bita Najdahmadi",
+            "Bita Najdahmadi",
+            "Maximilian Robert",
+            "Christian Lengert",
+        ],
+        [
+            "SUHJ-1",
+            "LMYC-1",
+            "STPS-1",
+            "QJGH-1",
+            "DYBB-1",
+            "MCS2-1",
+            "BL7S-1",
+            "UEUI-1",
+            "QY97-1",
+            "ZTLX-1",
+            "DZFZ-1",
+            "FFCS-1",
+            "7YPS-1",
+            "ERBH-1",
+            "4WLT-1",
+            "LVFF-1",
+            "PCLS-1",
+            "5JRK-2",
+            "5JRK-3",
+            "PYIS-1",
+            "N1DY-1",
+            "QXTC-1",
+            "MZ87-1",
+            "WKCB-1",
+            "NNFW-1",
+            "Y7NY-2",
+            "KDEE-1",
+            "AYCV-1",
+            "UY94-1",
+            "XKET-1",
+            "1M3J-2",
+            "DDDP-1",
+            "DDDP-2",
+            "DDDP-3",
+            "DDDP-4",
+            "DDDP-5",
+            "KAP7-1",
+            "H3MV-1",
+            "UVA6-1",
+            "9NPR-1",
+            "QHR6-1",
+            "CJFJ-1",
+            "INCT-1",
+            "JUCD-1",
+            "YDDA-5",
+            "2E8B-1",
+            "6DMR-1",
+            "JHHA-1",
+            "LJ3Y-1",
+            "J7XV-1",
+            "RYCD-1",
+            "8F8D-1",
+            "ZSUC-1",
+            "4DZB-1",
+            "4DZB-2",
+            "CDTP-1",
+            "CDTP-2",
+            "9PJ7-1",
+            "2G4R-1",
+            "MKKJ-1",
+            "DDBL-1",
+            "YXC4-1",
+            "C21K-3",
+            "6RME-1",
+            "KEQJ-2",
+            "E2GD-1",
+            "CYRZ-1",
+            "E8JA-2",
+            "GIEW-3",
+            "YUTR-1",
+            "ZGZ7-1",
+            "2CQC-1",
+            "FMZ8-1",
+            "QMHD-1",
+            "E4ET-1",
+            "E4ET-2",
+            "E4ET-3",
+            "FW5Y-1",
+            "FW5Y-2",
+            "FW5Y-3",
+            "UXEV-1",
+            "4NHX-1",
+        ],
         strict=False,
     )
 )

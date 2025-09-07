@@ -22,8 +22,8 @@ def create_static_pages(replace=False):
                 continue
             save_to.parent.mkdir(parents=True, exist_ok=True)
             contents = create_md_for_page_generation(attendee, "validate_certificate")
-            with open(save_to, "w") as f:
-                f.write(contents)
+            with open(save_to, "w") as content_file:
+                content_file.write(contents)
 
 
 def create_md_for_page_generation(attendee: Attendee, page_model: str):
@@ -50,11 +50,12 @@ _discoverable: no
 
 
 def obfuscate_name(name):
+    min_word_length_to_obfuscate = 2
     words = name.split()
     obfuscated_words = []
 
     for word in words:
-        if len(word) <= 2:
+        if len(word) <= min_word_length_to_obfuscate:
             obfuscated_words.append(word)
             continue
 

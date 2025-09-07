@@ -21,7 +21,7 @@ def on_post_build(config):
     w_percent = base_width / ph_logo.size[0]
     h_size = int(float(ph_logo.size[1]) * float(w_percent))
     ph_logo = ph_logo.resize((base_width, h_size), Image.Resampling.LANCZOS)
-    for k, dir_from_project_root in xtra["social_cards"]["dirs"].items():
+    for _k, dir_from_project_root in xtra["social_cards"]["dirs"].items():
         read_dir = root / dir_from_project_root
         for social_card in read_dir.glob("*.png"):
             # Get the social card image

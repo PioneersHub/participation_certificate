@@ -35,7 +35,7 @@ class PDF(FPDF):
                 self.set_y(y)
                 self.set_text_color(77, 170, 220)
                 self.multi_cell(
-                    w=item.width,
+                    w=width,
                     text=text,
                     markdown=True,
                     new_x="LEFT",
@@ -75,7 +75,7 @@ class Certificates:
     Generate PDF certificates for attendees of an event.
     """
 
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         attendees: list[Attendee],
         event: str,
@@ -194,6 +194,8 @@ class Certificates:
             fpdf.add_font(font.stem.casefold(), "", font)
         fpdf.add_font("poppins-regular", "B", conf.dirs.fonts_dir / "Poppins/Poppins-Bold.ttf")
         fpdf.add_font("poppins-regular", "I", conf.dirs.fonts_dir / "Poppins/Poppins-Italic.ttf")
+        fpdf.add_font("helvetica", "", conf.dirs.fonts_dir / "HelveticaNeue.ttc")
+        fpdf.add_font("helvetica", "B", conf.dirs.fonts_dir / "HelveticaNeue.ttc")
         fpdf.set_font("poppins-bold", size=48)
 
     def save(self, attendee: Attendee, fpdf):

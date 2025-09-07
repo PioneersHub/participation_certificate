@@ -105,6 +105,10 @@ quote-style = "double"
 indent-style = "space"
 docstring-code-format = true
 
+[tool.mypy]
+python_version = "3.12"
+ignore_missing_imports = true
+
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["participation_certificate*"]

@@ -10,28 +10,52 @@ if __name__ == "__main__":
     # CUSTOMIZE THIS
     #  example uses `pandas` to load the data from an Excel file.
     #  file to load the data from
-    attendees_table = "attendees-pyconde-2024.xlsx"
+    # attendees_table = "attendees-pyconde-2024.xlsx"
+    # # columns to load from the file
+    # load_columns = {
+    #     "Ticket Full Name": "full_name",
+    #     "Ticket First Name": "first_name",
+    #     "Ticket Email": "email",
+    #     "Ticket Reference": "ticket_reference",
+    #     "Ticket": "attended_how",
+    # }
+    # function to select rows from the DataFrame
+    # def select_rows(data_frame: pd.DataFrame) -> pd.DataFrame:
+    #     """Remove rows that are not participants for example for luggage or childcare"""
+    #     data_frame = data_frame[
+    #         ~data_frame["Ticket"].str.contains("Social|luggage|Childcare|Keynote|TEST")
+    #     ].reindex()
+    #     data_frame = data_frame[~data_frame["Void Status"].fillna("").str.contains("voided")]
+    #     return data_frame
+    # function to select rows from the DataFrame
+    # def select_rows(data_frame: pd.DataFrame) -> pd.DataFrame:
+    #     """Remove rows that are not participants for example for luggage or childcare"""
+    #     return data_frame
+    #
+    # # update columns in the DataFrame based on the info
+    # # Transform ticket types to attended_how field: must be either "on site" or "remotely"
+    # transformers = {"Ticket": lambda x: "remotely" if "online" in x.lower() else "on site"}
+
+    attendees_table = "euroscipy-2025_checkin_all.xlsx"
     # columns to load from the file
     load_columns = {
-        "Ticket Full Name": "full_name",
-        "Ticket First Name": "first_name",
-        "Ticket Email": "email",
-        "Ticket Reference": "ticket_reference",
-        "Ticket": "attended_how",
+        "Attendee name": "full_name",
+        "Attendee name: Given name": "first_name",
+        "Attendee name: Family name": "last_name",  # added
+        "Email": "email",
+        "Order code": "ticket_reference",
+        "Product": "attended_how",  # dummy
     }
 
     # function to select rows from the DataFrame
     def select_rows(data_frame: pd.DataFrame) -> pd.DataFrame:
         """Remove rows that are not participants for example for luggage or childcare"""
-        data_frame = data_frame[
-            ~data_frame["Ticket"].str.contains("Social|luggage|Childcare|Keynote|TEST")
-        ].reindex()
-        data_frame = data_frame[~data_frame["Void Status"].fillna("").str.contains("voided")]
         return data_frame
 
     # update columns in the DataFrame based on the info
     # Transform ticket types to attended_how field: must be either "on site" or "remotely"
-    transformers = {"Ticket": lambda x: "remotely" if "online" in x.lower() else "on site"}
+    transformers = {"attended_how": lambda x: "remotely" if "online" in x.lower() else "on site"}
+
     # noinspection PyTypeChecker
     participants = ProcessAttendees(
         Path(__file__).parents[1] / "_data" / attendees_table,

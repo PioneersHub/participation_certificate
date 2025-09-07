@@ -86,6 +86,8 @@ def send_certificates(jobs: list[Job], dry_run=False):
             subject=f"Certificate of Attendance: {conf.event_full_name}",
             text=message(attendee=job.attendee),
             recipients=recipients,
+            team_id=None,  # Will be set by provider if needed
+            agent_id=None,  # Will be set by provider if needed
         )
 
         # Add provider-specific fields if needed

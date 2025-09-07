@@ -52,7 +52,7 @@ class HelpDeskProvider(EmailProvider):
 
         if not mail.agent_id and self.config.get("agent_id"):
             mail.agent_id = self.config["agent_id"]
-        elif not mail.agent_id:
+        elif not mail.agent_id and self.helpdesk_client._config.HelpDesk:
             # Use HelpDesk client's configured account as fallback
             mail.agent_id = self.helpdesk_client._config.HelpDesk.account
 
@@ -67,9 +67,14 @@ class HelpDeskProvider(EmailProvider):
 
         try:
             responses, errors = self.mail_client.send(mail, dry_run=dry_run)
+            error_messages = []
             if errors:
-                logger.error(f"HelpDesk errors: {errors}")
-            return responses, errors
+                # Convert errors to list of strings
+                for recipient, error in errors:
+                    error_msg = f"{recipient.email}: {str(error)}"
+                    error_messages.append(error_msg)
+                logger.error(f"HelpDesk errors: {error_messages}")
+            return responses, error_messages
         except Exception as e:
             error_msg = f"Failed to send via HelpDesk: {str(e)}"
             logger.error(error_msg)

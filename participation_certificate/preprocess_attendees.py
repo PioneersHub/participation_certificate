@@ -15,8 +15,8 @@ class ProcessAttendees:
         self,
         xlsx_file: Path,
         columns: dict[str, str],
-        select_func: Callable[[..., pd.DataFrame], pd.DataFrame] | None = None,
-        transformers: dict[str, Callable[[..., Any], Any]] | None = None,
+        select_func: Callable[[pd.DataFrame], pd.DataFrame] | None = None,
+        transformers: dict[str, Callable[[Any], Any]] | None = None,
     ):
         self.attendees = []
         self.xlsx_file = xlsx_file
@@ -28,6 +28,7 @@ class ProcessAttendees:
 
     def load_attendees(self) -> list[Attendee]:
         df = pd.read_excel(self.xlsx_file, dtype=str)
+        df = df.rename(columns=self.columns)
         logger.info(f"Loaded {len(df)} attendees from {self.xlsx_file}")
 
         # appy optional method to select rows based on the data, e.g., remove non-participants
@@ -36,17 +37,18 @@ class ProcessAttendees:
         logger.info(f"Applied selecting attendees: {len(df)} attendees in list.")
 
         # transformations apply methods to mangle column data
-        for col in self.transformers:
-            df[col] = df[col].apply(self.transformers[col])
-        logger.info(f"Transformed {len(df)} attendees")
+        if self.transformers:
+            for col in self.transformers:
+                df[col] = df[col].apply(self.transformers[col])
+            logger.info(f"Transformed {len(df)} attendees")
 
         # remove incomplete information, i.e., missing name or email; other columns are populated by default.
-        df = df[self.columns.keys()]
+        df = df[self.columns.values()]
         df = df.dropna(how="any")
         logger.info(f"Dropped any record with missing info: {len(df)} attendees in list.")
 
         # avoid sending multiple certificates if people have multiple tickets, e.g., day tickets.
-        df["unique"] = df["Ticket Full Name"] + df["Ticket Email"]
+        df["unique"] = df["full_name"] + df["email"]
         df = df.drop_duplicates(subset="unique")
         df = df.drop(columns=["unique"])
         logger.info(
@@ -58,7 +60,7 @@ class ProcessAttendees:
         for record in df.to_dict(orient="records"):
             try:
                 # noinspection PyArgumentList
-                attendees.append(Attendee(**{self.columns[k]: v for k, v in record.items()}))  # noqa: C408
+                attendees.append(Attendee(**record))  # noqa: C408
             except Exception as e:
                 logger.error(f"Error creating attendee {record} {e}")
         logger.info(f"Finally {len(df)} attendees in list.")
