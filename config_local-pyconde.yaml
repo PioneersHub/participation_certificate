@@ -45,6 +45,12 @@ layout:
         - 0
         - 0  # black
     width: 200
+  # PDF Background Configuration
+  # Use a prepared PDF as background instead of colored rectangles
+  pdf_background:
+    enabled: false  # Set to true to use PDF background
+    file: "EuroScipy-2025-Certificate-of-Attendance.pdf"  # Path relative to graphics dir
+    page: 1  # Which page to use from multi-page PDFs (1-based index)
   background:
     # Items are place on top of each other.
     # Add a sequence of items to be placed on the canvas.

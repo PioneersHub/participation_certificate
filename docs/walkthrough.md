@@ -92,7 +92,7 @@ Steps to generate PDFs:
 | graphics        | `/graphics`                           |                                 |
 | signature files | `/_signatures`                        | make sure to never share/commit |
 
-Example: `[generate_certificates.py](src%2Fgenerate_certificates.py)`
+Example: `[generate_certificates.py](src/generate_certificates.py)`
 
 Uses: https://py-pdf.github.io/fpdf2/
 
@@ -107,6 +107,7 @@ For protection, the certificates are signed with a PKCS12 certificate.
 Use an unique subdomain, e.g. `certificates.your-domain.abc`.
 In you do not have a certificate for this domain, yet,
 create a free certificate for this domain with `certbot`.
+
 
 See [Certbot](https://certbot.eff.org) how to create certificates with certbot.
 A `privateKey` and a `certificate` is created.

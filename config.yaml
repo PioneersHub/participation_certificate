@@ -9,8 +9,10 @@ event_short_name: ""
 event_full_name: ""
 # url to download certificates
 certificates_url: ""
-# this can be used to validate certificates via a website
+# local path to write static validation pages (for static site generators like Lektor)
 static_pages_website: ""
+# public URL for validation links in PDFs (optional, defaults to static_pages_website if not set)
+validation_url: ""
 # ########################################
 # DIRECTORIES
 # ########################################
@@ -31,6 +33,27 @@ dirs:
 # ########################################
 # FONTS
 # ########################################
+# Font configuration for PDF generation
+fonts:
+  # Automatically load all TTF fonts from fonts directory
+  auto_load_ttf: true
+  # Default font to use if not specified
+  default_font: "helvetica"
+  default_size: 12
+  # Specific font definitions (optional)
+  # Format: font_name: {file: "path/to/font.ttf", styles: {bold: "path/to/font-bold.ttf", italic: "path/to/font-italic.ttf"}}
+  custom_fonts:
+  # Example:
+  # poppins:
+  #   regular: "Poppins/Poppins-Regular.ttf"
+  #   bold: "Poppins/Poppins-Bold.ttf"
+  #   italic: "Poppins/Poppins-Italic.ttf"
+  # Initial font setting when creating PDFs
+  initial_font:
+    name: "helvetica"
+    size: 12
+    style: ""  # "", "B", "I", or "BI"
+# Legacy settings (deprecated, use fonts section above)
 default_font: "Helvetica"
 additional_fonts:  # located in ./fonts
 # - "Roboto"
@@ -56,15 +79,22 @@ layout:
         - 0
         - 0  # black
     width: 200
+  # PDF Background Configuration (optional)
+  # Use a prepared PDF as background template instead of colored rectangles
+  # When enabled, the background rectangles below will be ignored
+  pdf_background:
+    enabled: false  # Set to true to use a PDF as background
+    file: ""  # Filename relative to graphics directory (e.g., "certificate_template.pdf")
+    page: 1  # Which page number to use from multipage PDFs (1-based index)
   background:
     # Items are place on top of each other.
     # Add a sequence of items to be placed on the canvas.
     # Currently only rectangles are supported.
     # Rectangle as the background, will look like a frame.
     - color:
-      - 61
-      - 164
-      - 51  # some green
+        - 61
+        - 164
+        - 51  # some green
       width: 0 # full width
       height: 0 # full height
       position:
@@ -74,13 +104,13 @@ layout:
     # text: "str"
     # position: tuple(x, y)
     # font:
-      # name: "str valid font name (optional, fallbacks to default)"
-      # size: number (optional, fallbacks to default)
-      # style: B, I, BI  (optional, fallbacks to "")
+    # name: "str valid font name (optional, fallbacks to default)"
+    # size: number (optional, fallbacks to default)
+    # style: B, I, BI  (optional, fallbacks to "")
     - text: "This is a Title"
       position:
-      - 45
-      - 98
+        - 45
+        - 98
       font:
         name: "helvetica"
         size: 48
@@ -94,8 +124,8 @@ layout:
         size: 24
     - text: "No. {attendee.hash}"
       position:
-      - 532
-      - 128
+        - 532
+        - 128
       font:
         name: "helvetica"
         size: 24
@@ -103,20 +133,11 @@ layout:
         - multi-lime bold **{event_full_name}**
         - text with format.
       position:
-      - 45
-      - 200
+        - 45
+        - 200
       width: 600
       font:
         size: 16
-    - text:
-
-    - text: "rotated text"
-      position:
-      - 816
-      - 250
-      font:
-        size: 6
-      rotate: 90  # degrees
   graphics:
     - name: "24-snake.svg"
       position:
