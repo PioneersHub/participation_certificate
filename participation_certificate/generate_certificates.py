@@ -235,7 +235,7 @@ class Certificates:
                 font_name = value_or_default(item, "font.name")
                 size = value_or_default(item, "font.size")
                 style = value_or_default(item, "font.style")
-                color = value_or_default(item, "font.color")
+                # color = value_or_default(item, "font.color")  # Not used - white override
                 text = value_or_default(item, "text")
                 x, y = item.position if item.get("position") else (0, 0)
 
@@ -249,9 +249,9 @@ class Certificates:
                 reportlab_font = self._get_reportlab_font(font_name, style)
                 can.setFont(reportlab_font, size)
 
-                # Set color
-                if isinstance(color, (list, tuple)) and len(color) == 3:
-                    can.setFillColorRGB(color[0] / 255, color[1] / 255, color[2] / 255)
+                # Set color - override to white for visibility on dark backgrounds
+                # Original color preserved in comment: color
+                can.setFillColorRGB(1, 1, 1)  # White text for dark backgrounds
 
                 # Handle rotation if specified
                 if "rotate" in item:
@@ -275,7 +275,7 @@ class Certificates:
             for item in footer_config:
                 font_name = value_or_default(item, "font.name")
                 size = value_or_default(item, "font.size")
-                color = value_or_default(item, "font.color")
+                # color = value_or_default(item, "font.color")  # Not used - white override
                 text = value_or_default(item, "text")
                 x, y = item.position
 
@@ -295,7 +295,7 @@ class Certificates:
 
                 reportlab_font = self._get_reportlab_font(font_name, "")
                 can.setFont(reportlab_font, size)
-                can.setFillColorRGB(77 / 255, 170 / 255, 220 / 255)  # Blue
+                can.setFillColorRGB(1, 1, 1)  # White text for visibility
                 can.drawString(x, y_reportlab, text)
 
                 # Add link annotation
