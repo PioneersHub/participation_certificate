@@ -9,6 +9,8 @@ from pathlib import Path
 from fpdf import FPDF, FPDF_VERSION
 from fpdf.enums import AccessPermission
 from omegaconf import DictConfig
+from pypdf import PdfReader, PdfWriter
+from reportlab.pdfgen import canvas
 
 from participation_certificate import all_fonts, conf, logger
 from participation_certificate.preprocess_attendees import Attendee
@@ -119,27 +121,30 @@ class Certificates:
             and conf.layout.pdf_background.get("enabled", False)
         )
 
-        # Create PDF
-        fpdf = PDF(format="A4", orientation="L", unit="pt", attendee=attendee)
-        self.load_project_fonts(fpdf)
-        fpdf.add_page()
-
         if use_pdf_background:
-            # Simple approach: use the PDF as page background
+            # Use pypdf/reportlab approach for PDF backgrounds
             bg_config = conf.layout.pdf_background
             bg_file = Path(conf.dirs.graphics) / bg_config.file
 
             if bg_file.exists():
                 logger.info(f"Using PDF background for {attendee.full_name}")
-                # Set the background PDF - fpdf2 will render it behind all content
-                fpdf.set_page_background(str(bg_file))
+                self._generate_with_pdf_background(attendee, bg_file)
             else:
                 logger.error(f"Background PDF not found: {bg_file}")
-                # Fall through to colored rectangles
-                use_pdf_background = False
+                # Fallback to regular generation
+                self._generate_with_colored_background(attendee)
+        else:
+            # Generate with colored rectangles
+            self._generate_with_colored_background(attendee)
 
-        if not use_pdf_background and conf.layout.get("background"):
-            # Add colored rectangle backgrounds if no PDF background
+    def _generate_with_colored_background(self, attendee):
+        """Generate certificate with colored rectangle backgrounds using fpdf2"""
+        fpdf = PDF(format="A4", orientation="L", unit="pt", attendee=attendee)
+        self.load_project_fonts(fpdf)
+        fpdf.add_page()
+
+        if conf.layout.get("background"):
+            # Add colored rectangle backgrounds
             for item in conf.layout.background:
                 color = value_or_default(item, "color")
                 fpdf.set_fill_color(*color)
@@ -153,6 +158,179 @@ class Certificates:
 
         # Save the certificate
         self.save(attendee, fpdf)
+
+    def _generate_with_pdf_background(self, attendee, bg_file):
+        """Generate certificate with PDF background using pypdf/reportlab"""
+        # Read background PDF
+        reader = PdfReader(str(bg_file))
+        background_page = reader.pages[0]
+
+        # Get page dimensions
+        page_width = float(background_page.mediabox.width)
+        page_height = float(background_page.mediabox.height)
+
+        # Create overlay with text using reportlab
+        overlay_bytes = self._create_text_overlay(attendee, page_width, page_height)
+
+        # Merge overlay with background
+        overlay_reader = PdfReader(overlay_bytes)
+        overlay_page = overlay_reader.pages[0]
+        background_page.merge_page(overlay_page)
+
+        # Create writer and add merged page
+        writer = PdfWriter()
+        writer.add_page(background_page)
+
+        # Add metadata
+        writer.add_metadata(
+            {
+                "/Title": render_text(
+                    conf.metadata.title, attendee=attendee, event_full_name=conf.event_full_name
+                ),
+                "/Subject": render_text(
+                    conf.metadata.description,
+                    attendee=attendee,
+                    event_full_name=conf.event_full_name,
+                ),
+                "/Author": render_text(
+                    conf.metadata.author, attendee=attendee, event_full_name=conf.event_full_name
+                ),
+                "/Keywords": render_text(
+                    conf.metadata.keywords, attendee=attendee, event_full_name=conf.event_full_name
+                ),
+                "/Creator": f"py-pdf/fpdf{FPDF_VERSION} with pypdf/reportlab",
+            }
+        )
+
+        # Set encryption
+        owner_pwd = secrets.token_urlsafe(10)
+        writer.encrypt(
+            user_password="",  # No user password
+            owner_password=owner_pwd,
+            permissions_flag=(1 << 2) | (1 << 11),  # Allow printing only
+        )
+
+        # Save the PDF
+        save_to = self.save_to / f"{attendee.uuid}" / f"{attendee.uuid}.pdf"
+        save_to.parent.mkdir(parents=True, exist_ok=True)
+
+        with open(save_to, "wb") as output:
+            writer.write(output)
+
+        # Save attendee record
+        json.dump(attendee.model_dump(), (save_to.parent / "record.json").open("w"), indent=4)
+
+        # Note: Digital signing would need to be implemented differently for pypdf
+        if self.sign_key is not None:
+            logger.warning(f"Digital signing not yet implemented for pypdf approach - {attendee}")
+
+    def _create_text_overlay(self, attendee, page_width, page_height):
+        """Create a transparent PDF with text using reportlab"""
+        packet = io.BytesIO()
+        can = canvas.Canvas(packet, pagesize=(page_width, page_height))
+
+        # Add text items from configuration
+        if conf.layout.get("text_items"):
+            for item in conf.layout.text_items:
+                font_name = value_or_default(item, "font.name")
+                size = value_or_default(item, "font.size")
+                style = value_or_default(item, "font.style")
+                color = value_or_default(item, "font.color")
+                text = value_or_default(item, "text")
+                x, y = item.position if item.get("position") else (0, 0)
+
+                # Render text with attendee data
+                text = render_text(text, attendee=attendee, event_full_name=conf.event_full_name)
+
+                # Convert y coordinate from top-left to bottom-left
+                y_reportlab = page_height - y
+
+                # Map font names and styles to reportlab
+                reportlab_font = self._get_reportlab_font(font_name, style)
+                can.setFont(reportlab_font, size)
+
+                # Set color
+                if isinstance(color, (list, tuple)) and len(color) == 3:
+                    can.setFillColorRGB(color[0] / 255, color[1] / 255, color[2] / 255)
+
+                # Handle rotation if specified
+                if "rotate" in item:
+                    can.saveState()
+                    can.translate(x, y_reportlab)
+                    can.rotate(item.rotate)
+                    can.drawString(0, 0, text)
+                    can.restoreState()
+                elif "\n" in text:
+                    # Multi-line text
+                    lines = text.split("\n")
+                    for i, line in enumerate(lines):
+                        can.drawString(x, y_reportlab - (i * size * 1.25), line)
+                else:
+                    # Single line text
+                    can.drawString(x, y_reportlab, text)
+
+        # Add footer if configured
+        footer_config = conf.layout.get("footer", {}).get("text_items")
+        if footer_config:
+            for item in footer_config:
+                font_name = value_or_default(item, "font.name")
+                size = value_or_default(item, "font.size")
+                color = value_or_default(item, "font.color")
+                text = value_or_default(item, "text")
+                x, y = item.position
+
+                # Handle negative y (from bottom)
+                if y < 0:
+                    y_reportlab = abs(y)
+                else:
+                    y_reportlab = page_height - y
+
+                link_url = conf.get("validation_url", conf.static_pages_website)
+                text = render_text(text, attendee=attendee, link=link_url)
+
+                # Remove markdown formatting for now
+                text = text.replace("**[", "").replace(
+                    "](" + link_url + "/" + attendee.uuid + "/)**", ""
+                )
+
+                reportlab_font = self._get_reportlab_font(font_name, "")
+                can.setFont(reportlab_font, size)
+                can.setFillColorRGB(77 / 255, 170 / 255, 220 / 255)  # Blue
+                can.drawString(x, y_reportlab, text)
+
+                # Add link annotation
+                full_url = f"{link_url}/{attendee.uuid}/"
+                can.linkURL(full_url, (x, y_reportlab - 5, x + 200, y_reportlab + 10), relative=0)
+
+        # Note: Graphics would need to be handled differently with reportlab
+        # For now, we'll skip graphics as they're in the background PDF
+
+        can.save()
+        packet.seek(0)
+        return packet
+
+    def _get_reportlab_font(self, font_name, style):
+        """Map fpdf font names to reportlab font names"""
+        # Basic mapping - can be extended
+        if "helvetica" in font_name.lower():
+            base = "Helvetica"
+        elif "times" in font_name.lower():
+            base = "Times-Roman"
+        elif "courier" in font_name.lower():
+            base = "Courier"
+        else:
+            # Default to Helvetica for custom fonts
+            # Note: Custom fonts would need to be registered with reportlab
+            base = "Helvetica"
+
+        if "B" in style and "I" in style:
+            return f"{base}-BoldOblique"
+        elif "B" in style:
+            return f"{base}-Bold"
+        elif "I" in style:
+            return f"{base}-Oblique" if base == "Helvetica" else f"{base}-Italic"
+        else:
+            return base
 
     def _add_content_to_pdf(self, fpdf, attendee):
         """Add text items, graphics, and metadata to the PDF"""
