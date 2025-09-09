@@ -6,6 +6,7 @@ import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
+from endesive.pdf import cms
 from fpdf import FPDF, FPDF_VERSION
 from fpdf.enums import AccessPermission
 from omegaconf import DictConfig
@@ -113,7 +114,7 @@ class Certificates:
             self.generate_certificate(attendee)
             logger.info(f"Saved {i}/{len(self.attendees)} certificate for {attendee.full_name}")
 
-    def generate_certificate(self, attendee):
+    def generate_certificate(self, attendee):  # noqa: PLR0915
         # Check if PDF background is configured
         use_pdf_background = (
             conf.layout.get("pdf_background")
@@ -159,7 +160,7 @@ class Certificates:
         # Save the certificate
         self.save(attendee, fpdf)
 
-    def _generate_with_pdf_background(self, attendee, bg_file):
+    def _generate_with_pdf_background(self, attendee, bg_file):  # noqa: PLR0915
         """Generate certificate with PDF background using pypdf/reportlab"""
         # Read background PDF
         reader = PdfReader(str(bg_file))
@@ -202,27 +203,90 @@ class Certificates:
             }
         )
 
-        # Set encryption
-        owner_pwd = secrets.token_urlsafe(10)
-        writer.encrypt(
-            user_password="",  # No user password
-            owner_password=owner_pwd,
-            permissions_flag=(1 << 2) | (1 << 11),  # Allow printing only
-        )
+        # Get PDF bytes BEFORE encryption for signing
+        pdf_buffer = io.BytesIO()
+        writer.write(pdf_buffer)
+        pdf_buffer.seek(0)
+        pdf_bytes = pdf_buffer.read()
 
-        # Save the PDF
-        save_to = self.save_to / f"{attendee.uuid}" / f"{attendee.uuid}.pdf"
-        save_to.parent.mkdir(parents=True, exist_ok=True)
+        # Digital signing with endesive if certificate is provided
+        if self.sign_key is not None:
+            logger.info(f"Signing {attendee}...")
+            try:
+                # Prepare signature metadata
+                from datetime import datetime
 
-        with open(save_to, "wb") as output:
-            writer.write(output)
+                from cryptography.hazmat.primitives.serialization import pkcs12
+
+                date_str = datetime.utcnow().strftime("D:%Y%m%d%H%M%S+00'00'")
+
+                signature_dict = {
+                    "sigflags": 3,
+                    "contact": b"certificates@pycon.de",
+                    "location": b"Digital Certificate",
+                    "signingdate": date_str.encode(),
+                    "reason": b"Certificate of Attendance Validation",
+                    "aligned": 0,  # Auto-calculate signature size
+                }
+
+                # Load and parse the PKCS#12 certificate
+                with open(self.sign_key, "rb") as p12_file:
+                    p12_data = p12_file.read()
+
+                # Extract key, cert, and additional certs from PKCS#12
+                (key, cert, othercerts) = pkcs12.load_key_and_certificates(
+                    p12_data, self.sign_password
+                )
+
+                # Sign the PDF
+                signed_pdf_bytes = cms.sign(
+                    pdf_bytes, signature_dict, key, cert, othercerts if othercerts else [], "sha256"
+                )
+
+                # Save the signed PDF
+                save_to = self.save_to / f"{attendee.uuid}" / f"{attendee.uuid}.pdf"
+                save_to.parent.mkdir(parents=True, exist_ok=True)
+
+                with open(save_to, "wb") as output:
+                    output.write(signed_pdf_bytes)
+
+                logger.debug(f"Successfully signed PDF for {attendee.full_name}")
+
+            except Exception as e:
+                import traceback
+
+                logger.error(f"Failed to sign PDF for {attendee}: {e}")
+                logger.debug(f"Traceback: {traceback.format_exc()}")
+                # Fallback: save unsigned PDF
+                save_to = self.save_to / f"{attendee.uuid}" / f"{attendee.uuid}.pdf"
+                save_to.parent.mkdir(parents=True, exist_ok=True)
+                with open(save_to, "wb") as output:
+                    output.write(pdf_bytes)
+        else:
+            # No signing - encrypt and save PDF
+            logger.warning(f"NO sign_key -> NOT signing {attendee}...")
+
+            # Apply encryption since we're not signing
+            writer_encrypted = PdfReader(io.BytesIO(pdf_bytes))
+            writer_final = PdfWriter()
+            for page in writer_encrypted.pages:
+                writer_final.add_page(page)
+
+            # Set encryption
+            owner_pwd = secrets.token_urlsafe(10)
+            writer_final.encrypt(
+                user_password="",  # No user password
+                owner_password=owner_pwd,
+                permissions_flag=(1 << 2) | (1 << 11),  # Allow printing only
+            )
+
+            save_to = self.save_to / f"{attendee.uuid}" / f"{attendee.uuid}.pdf"
+            save_to.parent.mkdir(parents=True, exist_ok=True)
+            with open(save_to, "wb") as output:
+                writer_final.write(output)
 
         # Save attendee record
         json.dump(attendee.model_dump(), (save_to.parent / "record.json").open("w"), indent=4)
-
-        # Note: Digital signing would need to be implemented differently for pypdf
-        if self.sign_key is not None:
-            logger.warning(f"Digital signing not yet implemented for pypdf approach - {attendee}")
 
     def _create_text_overlay(self, attendee, page_width, page_height):
         """Create a transparent PDF with text using reportlab"""
@@ -280,10 +344,7 @@ class Certificates:
                 x, y = item.position
 
                 # Handle negative y (from bottom)
-                if y < 0:
-                    y_reportlab = abs(y)
-                else:
-                    y_reportlab = page_height - y
+                y_reportlab = abs(y) if y < 0 else page_height - y
 
                 link_url = conf.get("validation_url", conf.static_pages_website)
                 text = render_text(text, attendee=attendee, link=link_url)
@@ -332,7 +393,7 @@ class Certificates:
         else:
             return base
 
-    def _add_content_to_pdf(self, fpdf, attendee):
+    def _add_content_to_pdf(self, fpdf, attendee):  # noqa: PLR0915
         """Add text items, graphics, and metadata to the PDF"""
         if conf.layout.get("text_items"):
             for item in conf.layout.text_items:
