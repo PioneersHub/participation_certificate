@@ -13,6 +13,10 @@ certificates_url: ""
 static_pages_website: ""
 # public URL for validation links in PDFs (optional, defaults to static_pages_website if not set)
 validation_url: ""
+# Attendee data file, relative to dirs.data_dir. CSV (.csv) or Excel (.xlsx).
+attendees_table: ""
+# Process only the first N attendees (useful for testing). 0 = process all.
+batch_size: 0
 # ########################################
 # DIRECTORIES
 # ########################################

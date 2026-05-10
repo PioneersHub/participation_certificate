@@ -27,7 +27,10 @@ class ProcessAttendees:
         self.attendees = self.load_attendees()
 
     def load_attendees(self) -> list[Attendee]:
-        df = pd.read_excel(self.xlsx_file, dtype=str)
+        if self.xlsx_file.suffix.lower() == ".csv":
+            df = pd.read_csv(self.xlsx_file, dtype=str)
+        else:
+            df = pd.read_excel(self.xlsx_file, dtype=str)
         df = df.rename(columns=self.columns)
         logger.info(f"Loaded {len(df)} attendees from {self.xlsx_file}")
 

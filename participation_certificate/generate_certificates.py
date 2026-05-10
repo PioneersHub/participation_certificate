@@ -226,7 +226,7 @@ class Certificates:
                     "location": b"Digital Certificate",
                     "signingdate": date_str.encode(),
                     "reason": b"Certificate of Attendance Validation",
-                    "aligned": 0,  # Auto-calculate signature size
+                    "aligned": 16384,  # Reserve enough bytes for the signature
                 }
 
                 # Load and parse the PKCS#12 certificate
@@ -238,10 +238,12 @@ class Certificates:
                     p12_data, self.sign_password
                 )
 
-                # Sign the PDF
-                signed_pdf_bytes = cms.sign(
+                # endesive.pdf.cms.sign returns only the incremental-update
+                # appendix; it must be concatenated to the original PDF bytes.
+                signature_appendix = cms.sign(
                     pdf_bytes, signature_dict, key, cert, othercerts if othercerts else [], "sha256"
                 )
+                signed_pdf_bytes = pdf_bytes + signature_appendix
 
                 # Save the signed PDF
                 save_to = self.save_to / f"{attendee.uuid}" / f"{attendee.uuid}.pdf"
@@ -288,23 +290,29 @@ class Certificates:
         # Save attendee record
         json.dump(attendee.model_dump(), (save_to.parent / "record.json").open("w"), indent=4)
 
-    def _create_text_overlay(self, attendee, page_width, page_height):
+    def _create_text_overlay(self, attendee, page_width, page_height):  # noqa: PLR0915
         """Create a transparent PDF with text using reportlab"""
         packet = io.BytesIO()
         can = canvas.Canvas(packet, pagesize=(page_width, page_height))
 
         # Add text items from configuration
+        validation_url = conf.get("validation_url") or conf.get("static_pages_website", "")
         if conf.layout.get("text_items"):
             for item in conf.layout.text_items:
                 font_name = value_or_default(item, "font.name")
                 size = value_or_default(item, "font.size")
                 style = value_or_default(item, "font.style")
-                # color = value_or_default(item, "font.color")  # Not used - white override
+                color = value_or_default(item, "font.color")
                 text = value_or_default(item, "text")
                 x, y = item.position if item.get("position") else (0, 0)
 
                 # Render text with attendee data
-                text = render_text(text, attendee=attendee, event_full_name=conf.event_full_name)
+                text = render_text(
+                    text,
+                    attendee=attendee,
+                    event_full_name=conf.event_full_name,
+                    validation_url=validation_url,
+                )
 
                 # Convert y coordinate from top-left to bottom-left
                 y_reportlab = page_height - y
@@ -313,12 +321,31 @@ class Certificates:
                 reportlab_font = self._get_reportlab_font(font_name, style)
                 can.setFont(reportlab_font, size)
 
-                # Set color - override to white for visibility on dark backgrounds
-                # Original color preserved in comment: color
-                can.setFillColorRGB(1, 1, 1)  # White text for dark backgrounds
+                # Apply configured color (RGB 0-255 list/tuple, or grayscale int)
+                rgb_components = 3
+                if isinstance(color, list | tuple) and len(color) == rgb_components:
+                    can.setFillColorRGB(color[0] / 255, color[1] / 255, color[2] / 255)
+                elif isinstance(color, int | float):
+                    g = color / 255
+                    can.setFillColorRGB(g, g, g)
+                else:
+                    can.setFillColorRGB(0, 0, 0)
 
-                # Handle rotation if specified
-                if "rotate" in item:
+                # Detect markdown link: [visible text](url) -> render as blue underlined link
+                md_link = re.match(r"^\[([^\]]+)\]\(([^)]+)\)$", text)
+
+                if md_link:
+                    link_text, link_url = md_link.group(1), md_link.group(2)
+                    can.drawString(x, y_reportlab, link_text)
+                    text_w = can.stringWidth(link_text, reportlab_font, size)
+                    can.setLineWidth(0.5)
+                    can.line(x, y_reportlab - 1, x + text_w, y_reportlab - 1)
+                    can.linkURL(
+                        link_url,
+                        (x, y_reportlab - 2, x + text_w, y_reportlab + size),
+                        relative=0,
+                    )
+                elif "rotate" in item:
                     can.saveState()
                     can.translate(x, y_reportlab)
                     can.rotate(item.rotate)
