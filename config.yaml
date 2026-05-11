@@ -13,10 +13,75 @@ certificates_url: ""
 static_pages_website: ""
 # public URL for validation links in PDFs (optional, defaults to static_pages_website if not set)
 validation_url: ""
+# public base URL for the social-share page (UUID-free; uses share_hash)
+share_url: ""
+# local Lektor path for share pages (sibling/separate from static_pages_website)
+share_pages_website: ""
 # Attendee data file, relative to dirs.data_dir. CSV (.csv) or Excel (.xlsx).
 attendees_table: ""
 # Process only the first N attendees (useful for testing). 0 = process all.
 batch_size: 0
+# Display text for the cert's "No." line, keyed by Attendee.attended_how value.
+# Empty when a value is missing from the map.
+attendance_display:
+  "on site": " · onsite"
+  "remotely": " · online"
+# Title used on the Lektor validation page (contents.lr).
+validation_page_title: "Certificate of Attendance Validation Service"
+# ########################################
+# OPTIONAL CERTIFICATE TYPES
+# ########################################
+# Masterclass + Speaker certificates reuse the same pipeline but with their own
+# data source, background, layout and Lektor destinations. Set `enabled: true`
+# and populate the per-type block in config_local.yaml to generate them via
+#   `python run.py --type masterclass`  /  `--type speaker`.
+masterclass:
+  enabled: false
+  # Excel under dirs.data_dir.
+  attendees_table: ""
+  # Source-column -> Attendee-field mapping passed to ProcessAttendees.
+  load_columns: {}
+  pdf_background:
+    file: ""                  # under dirs.graphics
+  text_items: []
+  # Per-type Lektor destinations; if empty, falls back to top-level ones.
+  static_pages_website: ""
+  share_pages_website: ""
+  share_url: ""
+  email:
+    body_template: ""
+    share_line: ""
+
+speaker:
+  enabled: false
+  # JSON under dirs.data_dir (list of speakers with Proposal IDs / Proposal titles).
+  speakers_json: ""
+  pdf_background:
+    file: ""
+  text_items: []
+  # URL templates resolved with {attendee.speaker_id} / {attendee.proposal_id}.
+  speaker_url_template: ""
+  talk_url_template: ""
+  static_pages_website: ""
+  share_pages_website: ""
+  share_url: ""
+  email:
+    body_template: ""
+    share_line: ""
+# ########################################
+# SOCIAL SHARING
+# ########################################
+# Where the social-share image links to when clicked on the validation page.
+# Per-platform share text templates are rendered with {event_full_name} and {share_url}.
+social:
+  click_through_url: ""
+  share_text:
+    default: ""
+    linkedin: ""
+    x: ""
+    mastodon: ""
+    whatsapp: ""
+    telegram: ""
 # ########################################
 # DIRECTORIES
 # ########################################
@@ -57,10 +122,6 @@ fonts:
     name: "helvetica"
     size: 12
     style: ""  # "", "B", "I", or "BI"
-# Legacy settings (deprecated, use fonts section above)
-default_font: "Helvetica"
-additional_fonts:  # located in ./fonts
-# - "Roboto"
 # ########################################
 # LAYOUT
 # ########################################
@@ -180,4 +241,23 @@ email:
     api_key_path: "_secret/brevo_key"  # Relative to project root
     sender_name: "Your Event Name"
     sender_email: "noreply@example.com"
+  # Body template; rendered with {first_name}, {event_full_name}, {certificates_url},
+  # {uuid}, {share_block}. {share_block} is replaced with the rendered share_line when a
+  # share_url is available, else empty.
+  body_template: ""
+  # One-liner injected into {share_block}; rendered with {share_url}.
+  share_line: ""
+# ########################################
+# DIGITAL SIGNATURE
+# ########################################
+signing:
+  # PKCS#12 keystore filename, relative to dirs.path_to_signatures.
+  # Leave empty to skip signing (PDFs will be encrypted-only).
+  sign_key: ""
+  # Path to a file containing the keystore password, relative to project root.
+  sign_password_path: "_signatures/keystore_password"
+  # Embedded in the PDF signature metadata, visible to anyone verifying the cert.
+  contact: ""
+  location: ""
+  reason: ""
 # ########################################

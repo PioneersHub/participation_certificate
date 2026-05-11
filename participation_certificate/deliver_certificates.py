@@ -1,3 +1,4 @@
+import argparse
 import json
 import shutil
 from pathlib import Path
@@ -7,63 +8,88 @@ from pytanis.helpdesk import Mail, Recipient
 
 from participation_certificate import conf, logger
 from participation_certificate.email_providers import get_email_provider
+from participation_certificate.generate_certificates import type_subdir
 from participation_certificate.models.attendee import Attendee
 
 
-def message(attendee: Attendee):
-    """Message to be sent to the attendees with the certificate link"""
-    message_text = f"""
-Dear {attendee.first_name},
+def _type_conf(cert_type: str):
+    return conf if cert_type == "attendee" else (conf.get(cert_type) or {})
 
-We are thrilled to enclose your Certificate of Attendance for the recent conference. It’s our pleasure to provide this complimentary certificate to all attendees as a token of our appreciation for your participation.
 
-To ensure the authenticity of your certificate, we’ve included a link within the PDF that allows for easy verification through our website.
+def _share_url(attendee: Attendee, cert_type: str) -> str:
+    """Public share URL — share_hash-keyed, never UUID-keyed."""
+    tc = _type_conf(cert_type)
+    base = (tc.get("share_url") if cert_type != "attendee" else None) or conf.get("share_url") or ""
+    return f"{base.rstrip('/')}/{attendee.share_hash}/" if base else ""
 
-Please keep in mind that the certificates are issued based on the information provided during registration, and we are unable to make any changes to the details.
 
-2024 Certificates will be available for downloaded until 31.12.2024. Please ensure that you download it by then:
-{conf.certificates_url}{attendee.uuid}.pdf
+def _email_section(cert_type: str) -> dict:
+    """Per-type email section. Falls back to the top-level `email` block."""
+    tc = _type_conf(cert_type)
+    if cert_type != "attendee":
+        per_type = tc.get("email") if tc else None
+        if per_type:
+            return per_type
+    return conf.email
 
-Thank you for being a part of our event. We hope to see you again at future conferences!
 
-All the best,
-{conf.event_full_name} Team"""
-    return message_text
+def message(attendee: Attendee, cert_type: str = "attendee") -> str:
+    """Render the delivery email from the cert type's `email.body_template`."""
+    email_conf = _email_section(cert_type)
+    template = email_conf.get("body_template") or ""
+    share_line_tpl = email_conf.get("share_line") or ""
+    share_url = _share_url(attendee, cert_type)
+    share_block = (
+        f"\n{share_line_tpl.format(share_url=share_url, event_full_name=conf.event_full_name)}\n"
+        if share_url and share_line_tpl
+        else ""
+    )
+    return template.format(
+        first_name=attendee.first_name,
+        event_full_name=conf.event_full_name,
+        certificates_url=conf.certificates_url,
+        uuid=attendee.uuid,
+        share_block=share_block,
+        # Type-specific placeholders — None for the type that doesn't carry them.
+        masterclass=attendee.masterclass or "",
+        talk_title=attendee.talk_title or "",
+    )
 
 
 class Job(BaseModel):
     attendee: Attendee
     file: Path
+    cert_type: str = "attendee"
 
 
-def collect_certificates():
-    path_to_certificates = conf.path_to_certificates / conf.event_short_name
-    # mirror with just the pdfs for upload to a webdirectory
-    path_to_certificates4upload = conf.path_to_certificates / f"{conf.event_short_name}_upload"
-    path_to_certificates4upload.mkdir(exist_ok=True, parents=True)
-    jobs = []
-    for directory in path_to_certificates.glob("*"):
-        if not directory.is_dir():
+def collect_certificates(cert_type: str = "attendee") -> list[Job]:
+    event_root = conf.dirs.path_to_certificates / conf.event_short_name
+    type_root = event_root / type_subdir(cert_type)
+    records_dir = type_root / "records"
+    pdf_root = type_root / "upload-to-certificates"
+    upload_mirror = (
+        conf.dirs.path_to_certificates / f"{conf.event_short_name}-{type_subdir(cert_type)}_upload"
+    )
+    upload_mirror.mkdir(exist_ok=True, parents=True)
+
+    jobs: list[Job] = []
+    for record in sorted(records_dir.glob("*.json")):
+        attendee = Attendee(**json.loads(record.read_text()))
+        pdf = pdf_root / attendee.uuid / f"{attendee.uuid}.pdf"
+        if not pdf.exists():
+            logger.warning(f"[{cert_type}] PDF missing for {attendee.uuid}: {pdf}")
             continue
-        logger.info(f"Processing {directory.name}")
-        jsonf = list(directory.glob("*.json"))[0]
-        with open(jsonf) as f:
-            data = json.load(f)
-            attendee = Attendee(**data)
-        # only one pdf-file is expected
-        pdf = list(directory.glob("*.pdf"))[0]
-        dst = path_to_certificates4upload / f"{attendee.uuid}{pdf.suffix}"
+        logger.info(f"[{cert_type}] Processing {attendee.uuid}")
+        dst = upload_mirror / f"{attendee.uuid}.pdf"
         if not dst.exists():
             shutil.copy(pdf, dst)
-        jobs.append(Job(attendee=attendee, file=pdf))
+        jobs.append(Job(attendee=attendee, file=pdf, cert_type=cert_type))
     return jobs
 
 
-def send_certificates(jobs: list[Job], dry_run=False):
-    # Get email provider from configuration
+def send_certificates(jobs: list[Job], dry_run: bool = False) -> None:
     provider_name = conf.email.provider
     provider_config = conf.email.get(provider_name, {})
-
     try:
         email_provider = get_email_provider(provider_name, provider_config)
     except Exception as e:
@@ -72,7 +98,6 @@ def send_certificates(jobs: list[Job], dry_run=False):
 
     logger.info(f"Using {provider_name} email provider to send {len(jobs)} certificates")
 
-    # Send certificates
     for i, job in enumerate(jobs, 1):
         recipients = [
             Recipient(
@@ -81,26 +106,34 @@ def send_certificates(jobs: list[Job], dry_run=False):
                 address_as=job.attendee.first_name,
             )
         ]
-
         mail = Mail(
             subject=f"Certificate of Attendance: {conf.event_full_name}",
-            text=message(attendee=job.attendee),
+            text=message(attendee=job.attendee, cert_type=job.cert_type),
             recipients=recipients,
-            team_id=None,  # Will be set by provider if needed
-            agent_id=None,  # Will be set by provider if needed
+            team_id=None,
+            agent_id=None,
         )
-
-        # Add provider-specific fields if needed
         if provider_name == "helpdesk" and conf.email.helpdesk.get("team_id"):
             mail.team_id = conf.email.helpdesk.team_id
 
-        logger.info(f"Sending certificate {i}/{len(jobs)} to {job.attendee.email}")
-
+        logger.info(f"Sending {i}/{len(jobs)} ({job.cert_type}) to {job.attendee.email}")
         responses, errors = email_provider.send(mail, dry_run=dry_run)
         if errors:
             logger.error(f"Error sending mail to {job.attendee.email}: {errors}")
 
 
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Deliver certificates for one type.")
+    parser.add_argument(
+        "--type",
+        choices=("attendee", "masterclass", "speaker"),
+        default="attendee",
+    )
+    parser.add_argument("--dry-run", action="store_true")
+    args = parser.parse_args()
+    jobs = collect_certificates(args.type)
+    send_certificates(jobs, dry_run=args.dry_run)
+
+
 if __name__ == "__main__":
-    collect = collect_certificates()
-    send_certificates(collect, dry_run=False)
+    main()

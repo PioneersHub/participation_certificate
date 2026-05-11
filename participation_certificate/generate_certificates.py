@@ -6,12 +6,18 @@ import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
+import pypdfium2 as pdfium
 from endesive.pdf import cms
 from fpdf import FPDF, FPDF_VERSION
 from fpdf.enums import AccessPermission
 from omegaconf import DictConfig
 from pypdf import PdfReader, PdfWriter
+from reportlab.lib.colors import Color
+from reportlab.lib.styles import ParagraphStyle
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFError, TTFont
 from reportlab.pdfgen import canvas
+from reportlab.platypus import Paragraph
 
 from participation_certificate import all_fonts, conf, logger
 from participation_certificate.preprocess_attendees import Attendee
@@ -70,6 +76,146 @@ def value_or_default(obj: DictConfig, keys: tuple[str, ...] | str, path: tuple[s
             return value_or_default(conf.layout, keys=path + keys, path=("default",))
 
 
+# Words with this many characters or fewer are kept verbatim by `obfuscate_name`.
+_OBFUSCATION_MIN_WORD_LEN = 3
+# Length of an RGB colour triple in our config representation.
+_RGB_TRIPLE_LEN = 3
+
+
+def obfuscate_name(full_name: str) -> str:
+    """Deterministic asterisk obfuscation for public validation/share pages.
+
+    Keep first and last char of each word; replace everything in between with '*'.
+    Words shorter than `_OBFUSCATION_MIN_WORD_LEN` are left unchanged. Same input
+    → same output every time, so Lektor rebuilds don't churn the published page.
+
+    "Mateusz Sokół" -> "M*****z S***ł"
+    "Ga Man Liang"  -> "Ga M*n L***g"
+    """
+    out = []
+    for word in full_name.split():
+        if len(word) < _OBFUSCATION_MIN_WORD_LEN:
+            out.append(word)
+        else:
+            out.append(word[0] + "*" * (len(word) - 2) + word[-1])
+    return " ".join(out)
+
+
+def _type_conf(cert_type: str):
+    """Return the per-type config block. Attendee defaults to the top-level config."""
+    if cert_type == "attendee":
+        return conf
+    return conf.get(cert_type) or {}
+
+
+# Cert-type → on-disk subdir under <event>/. Singular tokens are the programmatic
+# identifiers; plural names are the output directory layout the user expects:
+#   _certificates/<event>/{attendees, masterclasses, speakers}/...
+_TYPE_SUBDIR = {
+    "attendee": "attendees",
+    "masterclass": "masterclasses",
+    "speaker": "speakers",
+}
+
+
+def type_subdir(cert_type: str) -> str:
+    """Return the per-type output sub-directory name."""
+    return _TYPE_SUBDIR.get(cert_type, cert_type)
+
+
+def build_share_url(attendee: Attendee, cert_type: str = "attendee") -> str:
+    """Public share URL keyed by share_hash (UUID-free).
+
+    Each cert type can override `share_url` in its own config block; falls back
+    to the top-level `share_url`.
+    """
+    type_conf = _type_conf(cert_type)
+    base = (
+        (type_conf.get("share_url") if cert_type != "attendee" else None)
+        or conf.get("share_url")
+        or ""
+    )
+    return f"{base.rstrip('/')}/{attendee.share_hash}/" if base else ""
+
+
+def _build_share_texts(attendee: Attendee, cert_type: str = "attendee") -> dict[str, str]:
+    """Render per-platform share texts from `social.share_text` config.
+
+    Returns a dict keyed by platform name ("default", "linkedin", "x", ...).
+    Uses {event_full_name} and {share_url} placeholders. The {share_url} resolves
+    to the share-hash URL — never the UUID.
+    """
+    social = conf.get("social") or {}
+    templates = social.get("share_text") if social else None
+    if not templates:
+        return {}
+
+    share_url = build_share_url(attendee, cert_type)
+    rendered = {}
+    for platform, template in templates.items():
+        if template:
+            rendered[platform] = template.format(
+                event_full_name=conf.event_full_name,
+                share_url=share_url,
+                attendee=attendee,
+            )
+    return rendered
+
+
+def write_validation_page(
+    attendee: Attendee, target_dir: Path, cert_type: str = "attendee"
+) -> None:
+    """Write the slim Lektor `contents.lr` validation page (UUID-keyed, attendee-private)."""
+    title = conf.get("validation_page_title") or "Certificate of Attendance Validation Service"
+    blocks = [
+        "_model: validate_certificate",
+        f"title: {title}",
+        f"full_name: {obfuscate_name(attendee.full_name)}",
+        f"conference: {conf.event_full_name}",
+        f"hash: {attendee.hash}",
+        f"cert_type: {cert_type}",
+        "_discoverable: no",
+    ]
+    contents = "\n---\n".join(blocks) + "\n"
+    (target_dir / "contents.lr").write_text(contents, encoding="utf-8")
+
+
+def write_share_page(attendee: Attendee, target_dir: Path, cert_type: str = "attendee") -> None:
+    """Write the public share page Lektor `contents.lr` (share_hash-keyed, no UUID)."""
+    social = conf.get("social") or {}
+    click_through = social.get("click_through_url", "") if social else ""
+    share_url = build_share_url(attendee, cert_type)
+    share_texts = _build_share_texts(attendee, cert_type)
+
+    blocks = [
+        "_model: certificate_share",
+        "title: Certificate of Attendance",
+        f"full_name: {obfuscate_name(attendee.full_name)}",
+        f"conference: {conf.event_full_name}",
+        f"image: {attendee.share_hash}.png",
+        f"click_url: {click_through}",
+        f"share_url: {share_url}",
+        f"cert_type: {cert_type}",
+    ]
+    for platform, text in share_texts.items():
+        blocks.append(f"share_text_{platform}: {text}")
+    blocks.append("_discoverable: no")
+
+    contents = "\n---\n".join(blocks) + "\n"
+    (target_dir / "contents.lr").write_text(contents, encoding="utf-8")
+
+
+def _to_reportlab_color(color, alpha=None) -> Color:
+    """Build a reportlab `Color` from our config form (RGB 0–255 list/tuple or int)."""
+    a = 1 if alpha is None else alpha
+    if isinstance(color, list | tuple) and len(color) == _RGB_TRIPLE_LEN:
+        return Color(color[0] / 255, color[1] / 255, color[2] / 255, alpha=a)
+    if isinstance(color, int | float):
+        g = color / 255
+        return Color(g, g, g, alpha=a)
+    return Color(0, 0, 0, alpha=a)
+
+
 def render_text(text: str | list, **kwargs):
     new_text = []
     if isinstance(text, str):
@@ -92,6 +238,7 @@ class Certificates:
         permissions: str | None = None,
         sign_key: Path | None = None,
         sign_password: bytes | None = None,
+        cert_type: str = "attendee",
     ):
         """
 
@@ -101,13 +248,41 @@ class Certificates:
           Custom permissions can be set via `fpdf.enums.AccessPermission`.
         :param sign_key: optional: sign documents using PKCS#12 certificates; path to certificate file.
         :param sign_password: optional: only required if sign_key is set.
+        :param cert_type: "attendee" (default, top-level config), "masterclass", or "speaker".
+          Non-attendee types live under their own config block and their own output sub-tree.
         """
         self.attendees: list[Attendee] = attendees
         self.event: str = event
         self.permissions: str | None = permissions
         self.sign_key: Path | None = sign_key
         self.sign_password: bytes | None = sign_password
-        self.save_to = conf.dirs.path_to_certificates / self.event
+        self.cert_type: str = cert_type
+        # All cert types live under their own pluralised sub-directory:
+        #   <event>/attendees, <event>/masterclasses, <event>/speakers.
+        self.save_to = conf.dirs.path_to_certificates / self.event / type_subdir(cert_type)
+
+    def _type_conf(self):
+        """Per-type config block. Returns the top-level conf for attendee, conf[cert_type] otherwise."""
+        if self.cert_type == "attendee":
+            return conf
+        return conf.get(self.cert_type) or {}
+
+    # Output layout (under self.save_to):
+    #   upload-to-certificates/<uuid>/<uuid>.pdf   — PDFs ready for S3
+    #   records/<uuid>.json                        — attendee data, flat
+    #   website-validate/<uuid>/contents.lr        — Lektor validation pages
+    #   website-share/<share_hash>/{contents.lr, <share_hash>.png}  — Lektor share pages
+    def _pdf_path(self, attendee):
+        return self.save_to / "upload-to-certificates" / attendee.uuid / f"{attendee.uuid}.pdf"
+
+    def _record_path(self, attendee):
+        return self.save_to / "records" / f"{attendee.uuid}.json"
+
+    def _validate_dir(self, attendee):
+        return self.save_to / "website-validate" / attendee.uuid
+
+    def _share_dir(self, attendee):
+        return self.save_to / "website-share" / attendee.share_hash
 
     def generate_certificates(self):
         for i, attendee in enumerate(self.attendees):
@@ -115,28 +290,44 @@ class Certificates:
             logger.info(f"Saved {i}/{len(self.attendees)} certificate for {attendee.full_name}")
 
     def generate_certificate(self, attendee):  # noqa: PLR0915
-        # Check if PDF background is configured
-        use_pdf_background = (
-            conf.layout.get("pdf_background")
-            and isinstance(conf.layout.pdf_background, dict | DictConfig)
-            and conf.layout.pdf_background.get("enabled", False)
-        )
-
-        if use_pdf_background:
-            # Use pypdf/reportlab approach for PDF backgrounds
-            bg_config = conf.layout.pdf_background
-            bg_file = Path(conf.dirs.graphics) / bg_config.file
-
-            if bg_file.exists():
-                logger.info(f"Using PDF background for {attendee.full_name}")
-                self._generate_with_pdf_background(attendee, bg_file)
-            else:
-                logger.error(f"Background PDF not found: {bg_file}")
-                # Fallback to regular generation
-                self._generate_with_colored_background(attendee)
+        bg_file = self._background_file()
+        if bg_file is not None:
+            if not bg_file.exists():
+                # A background is configured but the file is missing. For the
+                # attendee path, fall back to the legacy colored-rect renderer
+                # to preserve old behaviour; for masterclass/speaker, fail fast
+                # — those types are only meaningful with their event background.
+                if self.cert_type == "attendee":
+                    logger.error(f"Background PDF not found: {bg_file} — falling back.")
+                    self._generate_with_colored_background(attendee)
+                    return
+                raise FileNotFoundError(
+                    f"{self.cert_type} background PDF not found: {bg_file}. "
+                    f"Provide the file or disable conf.{self.cert_type}.enabled."
+                )
+            logger.info(f"Using PDF background for {attendee.full_name}")
+            self._generate_with_pdf_background(attendee, bg_file)
         else:
-            # Generate with colored rectangles
             self._generate_with_colored_background(attendee)
+
+    def _background_file(self) -> Path | None:
+        """Return the PDF-background path for this cert type, or None if not configured."""
+        if self.cert_type == "attendee":
+            bg = conf.layout.get("pdf_background")
+            if (
+                bg
+                and isinstance(bg, dict | DictConfig)
+                and bg.get("enabled", False)
+                and bg.get("file")
+            ):
+                return Path(conf.dirs.graphics) / bg.file
+            return None
+        # masterclass / speaker: background lives under the per-type block.
+        type_conf = self._type_conf()
+        bg = type_conf.get("pdf_background") if type_conf else None
+        if bg and isinstance(bg, dict | DictConfig) and bg.get("file"):
+            return Path(conf.dirs.graphics) / bg.file
+        return None
 
     def _generate_with_colored_background(self, attendee):
         """Generate certificate with colored rectangle backgrounds using fpdf2"""
@@ -220,12 +411,13 @@ class Certificates:
 
                 date_str = datetime.utcnow().strftime("D:%Y%m%d%H%M%S+00'00'")
 
+                signing_conf = conf.get("signing") or {}
                 signature_dict = {
                     "sigflags": 3,
-                    "contact": b"certificates@pycon.de",
-                    "location": b"Digital Certificate",
+                    "contact": (signing_conf.get("contact") or "").encode(),
+                    "location": (signing_conf.get("location") or "").encode(),
                     "signingdate": date_str.encode(),
-                    "reason": b"Certificate of Attendance Validation",
+                    "reason": (signing_conf.get("reason") or "").encode(),
                     "aligned": 16384,  # Reserve enough bytes for the signature
                 }
 
@@ -245,11 +437,9 @@ class Certificates:
                 )
                 signed_pdf_bytes = pdf_bytes + signature_appendix
 
-                # Save the signed PDF
-                save_to = self.save_to / f"{attendee.uuid}" / f"{attendee.uuid}.pdf"
-                save_to.parent.mkdir(parents=True, exist_ok=True)
-
-                with open(save_to, "wb") as output:
+                pdf_path = self._pdf_path(attendee)
+                pdf_path.parent.mkdir(parents=True, exist_ok=True)
+                with open(pdf_path, "wb") as output:
                     output.write(signed_pdf_bytes)
 
                 logger.debug(f"Successfully signed PDF for {attendee.full_name}")
@@ -260,21 +450,19 @@ class Certificates:
                 logger.error(f"Failed to sign PDF for {attendee}: {e}")
                 logger.debug(f"Traceback: {traceback.format_exc()}")
                 # Fallback: save unsigned PDF
-                save_to = self.save_to / f"{attendee.uuid}" / f"{attendee.uuid}.pdf"
-                save_to.parent.mkdir(parents=True, exist_ok=True)
-                with open(save_to, "wb") as output:
+                pdf_path = self._pdf_path(attendee)
+                pdf_path.parent.mkdir(parents=True, exist_ok=True)
+                with open(pdf_path, "wb") as output:
                     output.write(pdf_bytes)
         else:
             # No signing - encrypt and save PDF
             logger.warning(f"NO sign_key -> NOT signing {attendee}...")
 
-            # Apply encryption since we're not signing
             writer_encrypted = PdfReader(io.BytesIO(pdf_bytes))
             writer_final = PdfWriter()
             for page in writer_encrypted.pages:
                 writer_final.add_page(page)
 
-            # Set encryption
             owner_pwd = secrets.token_urlsafe(10)
             writer_final.encrypt(
                 user_password="",  # No user password
@@ -282,83 +470,192 @@ class Certificates:
                 permissions_flag=(1 << 2) | (1 << 11),  # Allow printing only
             )
 
-            save_to = self.save_to / f"{attendee.uuid}" / f"{attendee.uuid}.pdf"
-            save_to.parent.mkdir(parents=True, exist_ok=True)
-            with open(save_to, "wb") as output:
+            pdf_path = self._pdf_path(attendee)
+            pdf_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(pdf_path, "wb") as output:
                 writer_final.write(output)
 
-        # Save attendee record
-        json.dump(attendee.model_dump(), (save_to.parent / "record.json").open("w"), indent=4)
+        # Save attendee record (flat under records/<uuid>.json).
+        record_path = self._record_path(attendee)
+        record_path.parent.mkdir(parents=True, exist_ok=True)
+        json.dump(attendee.model_dump(), record_path.open("w"), indent=4)
 
-    def _create_text_overlay(self, attendee, page_width, page_height):  # noqa: PLR0915
-        """Create a transparent PDF with text using reportlab"""
+        # Validation Lektor page (UUID-keyed).
+        validate_dir = self._validate_dir(attendee)
+        validate_dir.mkdir(parents=True, exist_ok=True)
+        write_validation_page(attendee, validate_dir, self.cert_type)
+
+        # Public share artefacts (share_hash-keyed; UUID never appears here).
+        share_dir = self._share_dir(attendee)
+        share_dir.mkdir(parents=True, exist_ok=True)
+        self._generate_share_image(attendee, bg_file, share_dir)
+        write_share_page(attendee, share_dir, self.cert_type)
+
+    def _generate_share_image(self, attendee, bg_file, target_dir):
+        """Render the watermarked, hashless PNG of the certificate for social sharing.
+
+        Reuses the same background + overlay pipeline with `share_mode=True`,
+        then rasterises page 0 via pypdfium2 (no system deps, full Unicode).
+        Saves to `<target_dir>/<share_hash>.png`.
+        """
+        reader = PdfReader(str(bg_file))
+        background_page = reader.pages[0]
+        page_width = float(background_page.mediabox.width)
+        page_height = float(background_page.mediabox.height)
+
+        overlay_bytes = self._create_text_overlay(
+            attendee, page_width, page_height, share_mode=True
+        )
+        overlay_page = PdfReader(overlay_bytes).pages[0]
+        background_page.merge_page(overlay_page)
+
+        writer = PdfWriter()
+        writer.add_page(background_page)
+        merged = io.BytesIO()
+        writer.write(merged)
+        merged.seek(0)
+
+        share_dpi = 150
+        scale = share_dpi / 72
+        pdf = pdfium.PdfDocument(merged.read())
+        try:
+            pil_image = pdf[0].render(scale=scale).to_pil()
+            pil_image.save(target_dir / f"{attendee.share_hash}.png", format="PNG", optimize=True)
+        finally:
+            pdf.close()
+
+    def _create_text_overlay(self, attendee, page_width, page_height, share_mode=False):  # noqa: PLR0912, PLR0915
+        """Create a transparent PDF with text using reportlab.
+
+        When `share_mode=True`, text items flagged with `omit_in_share: true` are skipped.
+        Used to produce the social-share PNG without the hash or validation URL.
+        """
         packet = io.BytesIO()
         can = canvas.Canvas(packet, pagesize=(page_width, page_height))
 
-        # Add text items from configuration
+        # Add text items from configuration.
+        # For attendee: text_items live under conf.layout. For masterclass/speaker:
+        # under conf.<cert_type>.text_items so each type has its own overlay.
         validation_url = conf.get("validation_url") or conf.get("static_pages_website", "")
-        if conf.layout.get("text_items"):
-            for item in conf.layout.text_items:
-                font_name = value_or_default(item, "font.name")
-                size = value_or_default(item, "font.size")
-                style = value_or_default(item, "font.style")
-                color = value_or_default(item, "font.color")
-                text = value_or_default(item, "text")
-                x, y = item.position if item.get("position") else (0, 0)
+        attendance_map = conf.get("attendance_display") or {}
+        attended_how_display = attendance_map.get(attendee.attended_how, "")
 
-                # Render text with attendee data
-                text = render_text(
-                    text,
-                    attendee=attendee,
-                    event_full_name=conf.event_full_name,
-                    validation_url=validation_url,
+        # Speaker URL templates resolve against the attendee record; empty for other types.
+        speaker_conf = conf.get("speaker") or {}
+        speaker_url_tpl = speaker_conf.get("speaker_url_template") or ""
+        talk_url_tpl = speaker_conf.get("talk_url_template") or ""
+        speaker_url = speaker_url_tpl.format(attendee=attendee) if speaker_url_tpl else ""
+        talk_url = talk_url_tpl.format(attendee=attendee) if talk_url_tpl else ""
+
+        if self.cert_type == "attendee":
+            text_items = conf.layout.get("text_items") or []
+        else:
+            type_conf = self._type_conf()
+            text_items = (type_conf.get("text_items") or []) if type_conf else []
+
+        for item in text_items:
+            if share_mode and item.get("omit_in_share"):
+                continue
+            if not share_mode and item.get("share_only"):
+                continue
+            font_name = value_or_default(item, "font.name")
+            size = value_or_default(item, "font.size")
+            style = value_or_default(item, "font.style")
+            color = value_or_default(item, "font.color")
+            alpha = item.get("font", {}).get("alpha") if item.get("font") else None
+            text = value_or_default(item, "text")
+            x, y = item.position if item.get("position") else (0, 0)
+
+            # Render text with attendee data
+            text = render_text(
+                text,
+                attendee=attendee,
+                event_full_name=conf.event_full_name,
+                validation_url=validation_url,
+                attended_how_display=attended_how_display,
+                speaker_url=speaker_url,
+                talk_url=talk_url,
+            )
+
+            # Convert y coordinate from top-left to bottom-left
+            y_reportlab = page_height - y
+
+            # Map font names and styles to reportlab
+            reportlab_font = self._get_reportlab_font(font_name, style)
+            can.setFont(reportlab_font, size)
+
+            # Apply configured color (RGB 0-255 list/tuple, or grayscale int).
+            # Optional `font.alpha` (0..1) makes watermarks semi-transparent.
+            if isinstance(color, list | tuple) and len(color) == _RGB_TRIPLE_LEN:
+                can.setFillColorRGB(color[0] / 255, color[1] / 255, color[2] / 255, alpha=alpha)
+            elif isinstance(color, int | float):
+                g = color / 255
+                can.setFillColorRGB(g, g, g, alpha=alpha)
+            else:
+                can.setFillColorRGB(0, 0, 0, alpha=alpha)
+
+            # Detect markdown link: [visible text](url) -> render as blue underlined link
+            md_link = re.match(r"^\[([^\]]+)\]\(([^)]+)\)$", text)
+
+            # Wrap-box rendering: when both `width` and `height` are set, use a
+            # reportlab Paragraph so the text wraps inside the box (max `width`)
+            # and is vertically centred within `height`. Markdown links are
+            # preserved as clickable links via the Paragraph's `<a>` markup.
+            box_width = item.get("width")
+            box_height = item.get("height")
+            if box_width and box_height:
+                align_map = {"left": 0, "center": 1, "centre": 1, "right": 2}
+                style_obj = ParagraphStyle(
+                    name="cell",
+                    fontName=reportlab_font,
+                    fontSize=size,
+                    leading=size * 1.2,
+                    textColor=_to_reportlab_color(color, alpha),
+                    alignment=align_map.get(item.get("align"), 0),
                 )
-
-                # Convert y coordinate from top-left to bottom-left
-                y_reportlab = page_height - y
-
-                # Map font names and styles to reportlab
-                reportlab_font = self._get_reportlab_font(font_name, style)
-                can.setFont(reportlab_font, size)
-
-                # Apply configured color (RGB 0-255 list/tuple, or grayscale int)
-                rgb_components = 3
-                if isinstance(color, list | tuple) and len(color) == rgb_components:
-                    can.setFillColorRGB(color[0] / 255, color[1] / 255, color[2] / 255)
-                elif isinstance(color, int | float):
-                    g = color / 255
-                    can.setFillColorRGB(g, g, g)
-                else:
-                    can.setFillColorRGB(0, 0, 0)
-
-                # Detect markdown link: [visible text](url) -> render as blue underlined link
-                md_link = re.match(r"^\[([^\]]+)\]\(([^)]+)\)$", text)
-
                 if md_link:
                     link_text, link_url = md_link.group(1), md_link.group(2)
-                    can.drawString(x, y_reportlab, link_text)
-                    text_w = can.stringWidth(link_text, reportlab_font, size)
-                    can.setLineWidth(0.5)
-                    can.line(x, y_reportlab - 1, x + text_w, y_reportlab - 1)
-                    can.linkURL(
-                        link_url,
-                        (x, y_reportlab - 2, x + text_w, y_reportlab + size),
-                        relative=0,
-                    )
-                elif "rotate" in item:
-                    can.saveState()
-                    can.translate(x, y_reportlab)
-                    can.rotate(item.rotate)
-                    can.drawString(0, 0, text)
-                    can.restoreState()
-                elif "\n" in text:
-                    # Multi-line text
-                    lines = text.split("\n")
-                    for i, line in enumerate(lines):
-                        can.drawString(x, y_reportlab - (i * size * 1.25), line)
+                    para_html = f'<a href="{link_url}"><u>{link_text}</u></a>'
                 else:
-                    # Single line text
-                    can.drawString(x, y_reportlab, text)
+                    para_html = text
+                para = Paragraph(para_html, style_obj)
+                _w, para_h = para.wrap(box_width, box_height)
+                # Vertically centre inside the box; `y` is the box's top edge in
+                # top-left coords, so box-bottom in reportlab coords is below.
+                box_bottom_rl = page_height - (y + box_height)
+                y_offset = (box_height - para_h) / 2
+                para.drawOn(can, x, box_bottom_rl + y_offset)
+                continue
+
+            if md_link:
+                link_text, link_url = md_link.group(1), md_link.group(2)
+                draw = self._aligned_drawer(can, item.get("align"))
+                draw(x, y_reportlab, link_text)
+                text_w = can.stringWidth(link_text, reportlab_font, size)
+                # For right-aligned text, the underline + link box start at (x - text_w).
+                left = x - text_w if item.get("align") == "right" else x
+                can.setLineWidth(0.5)
+                can.line(left, y_reportlab - 1, left + text_w, y_reportlab - 1)
+                can.linkURL(
+                    link_url,
+                    (left, y_reportlab - 2, left + text_w, y_reportlab + size),
+                    relative=0,
+                )
+            elif "rotate" in item:
+                can.saveState()
+                can.translate(x, y_reportlab)
+                can.rotate(item.rotate)
+                can.drawString(0, 0, text)
+                can.restoreState()
+            elif "\n" in text:
+                # Multi-line text
+                draw = self._aligned_drawer(can, item.get("align"))
+                lines = text.split("\n")
+                for i, line in enumerate(lines):
+                    draw(x, y_reportlab - (i * size * 1.25), line)
+            else:
+                # Single line text
+                self._aligned_drawer(can, item.get("align"))(x, y_reportlab, text)
 
         # Add footer if configured
         footer_config = conf.layout.get("footer", {}).get("text_items")
@@ -397,28 +694,76 @@ class Certificates:
         packet.seek(0)
         return packet
 
+    @staticmethod
+    def _aligned_drawer(can, align):
+        """Return the reportlab canvas method matching `align` (left/right/center)."""
+        if align == "right":
+            return can.drawRightString
+        if align in ("center", "centre"):
+            return can.drawCentredString
+        return can.drawString
+
+    _registered_ttf: set = set()
+
+    def _register_reportlab_ttf(self, font_name, style):
+        """Register the configured TTF with reportlab if available; return its name or None.
+
+        Built-in PostScript fonts (Helvetica/Times/Courier) use WinAnsiEncoding and cannot
+        render characters outside Latin-1 (e.g. Polish ł, ś, ż). TTF fonts registered via
+        reportlab.pdfbase.ttfonts.TTFont use the font's own Unicode cmap, so they render
+        correctly.
+        """
+        variant = "bold" if "B" in style else "italic" if "I" in style else "regular"
+        cache_key = (font_name.lower(), variant)
+        reg_name = f"{font_name}-{variant}"
+
+        if cache_key in self._registered_ttf:
+            return reg_name
+
+        custom_fonts = conf.fonts.get("custom_fonts") if conf.get("fonts") else None
+        family = custom_fonts.get(font_name) if custom_fonts else None
+        if not family:
+            return None
+
+        rel_path = family.get(variant) or family.get("regular")
+        if not rel_path:
+            return None
+
+        font_path = Path(conf.dirs.fonts_dir) / rel_path
+        if not font_path.exists():
+            logger.warning(f"Configured font not found on disk: {font_path}")
+            return None
+
+        try:
+            pdfmetrics.registerFont(TTFont(reg_name, str(font_path)))
+        except TTFError as exc:
+            logger.warning(f"Failed to register TTF {font_path}: {exc}")
+            return None
+
+        self._registered_ttf.add(cache_key)
+        return reg_name
+
     def _get_reportlab_font(self, font_name, style):
-        """Map fpdf font names to reportlab font names"""
-        # Basic mapping - can be extended
-        if "helvetica" in font_name.lower():
-            base = "Helvetica"
-        elif "times" in font_name.lower():
+        """Return a reportlab font name. Prefer registered TTFs (full Unicode); else Helvetica."""
+        if font_name:
+            registered = self._register_reportlab_ttf(font_name, style)
+            if registered:
+                return registered
+
+        if font_name and "times" in font_name.lower():
             base = "Times-Roman"
-        elif "courier" in font_name.lower():
+        elif font_name and "courier" in font_name.lower():
             base = "Courier"
         else:
-            # Default to Helvetica for custom fonts
-            # Note: Custom fonts would need to be registered with reportlab
             base = "Helvetica"
 
         if "B" in style and "I" in style:
-            return f"{base}-BoldOblique"
-        elif "B" in style:
+            return f"{base}-BoldOblique" if base == "Helvetica" else f"{base}-BoldItalic"
+        if "B" in style:
             return f"{base}-Bold"
-        elif "I" in style:
+        if "I" in style:
             return f"{base}-Oblique" if base == "Helvetica" else f"{base}-Italic"
-        else:
-            return base
+        return base
 
     def _add_content_to_pdf(self, fpdf, attendee):  # noqa: PLR0915
         """Add text items, graphics, and metadata to the PDF"""
@@ -605,7 +950,14 @@ class Certificates:
         :param fpdf: instance of `FPDF` with the certificate
         :return:
         """
-        save_to = self.save_to / f"{attendee.uuid}" / f"{attendee.uuid}.pdf"
-        save_to.parent.mkdir(parents=True, exist_ok=True)
-        fpdf.output(save_to)
-        json.dump(attendee.model_dump(), (save_to.parent / "record.json").open("w"), indent=4)
+        pdf_path = self._pdf_path(attendee)
+        pdf_path.parent.mkdir(parents=True, exist_ok=True)
+        fpdf.output(pdf_path)
+
+        record_path = self._record_path(attendee)
+        record_path.parent.mkdir(parents=True, exist_ok=True)
+        json.dump(attendee.model_dump(), record_path.open("w"), indent=4)
+
+        validate_dir = self._validate_dir(attendee)
+        validate_dir.mkdir(parents=True, exist_ok=True)
+        write_validation_page(attendee, validate_dir, self.cert_type)

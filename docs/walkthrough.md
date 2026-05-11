@@ -126,7 +126,7 @@ More options to create certificates are described
 
 Certificates are accompanied by a JSON that contains all the attendee information.
 
-Example: `./participation_certificate/valdiation_upload.py`
+Example: `participation_certificate/validation_upload.py`
 
 Generates markdown files that can be added to the static website renderer (PyCon DE uses lektor).
 

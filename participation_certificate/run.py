@@ -1,49 +1,72 @@
+"""Generate certificates for one cert type at a time.
+
+Usage:
+    uv run python participation_certificate/run.py [--type attendee|masterclass|speaker]
+
+Attendee output stays at `_certificates/<event>/{upload-to-certificates, records, …}/`.
+Masterclass and speaker outputs go under `<event>/<type>/...` so the three trees never
+collide. Each type is gated on `conf.<type>.enabled` (attendee is implicit, always on).
+"""
+
+import argparse
+import sys
 from pathlib import Path
 
 import pandas as pd
 
-from participation_certificate import conf
+from participation_certificate import conf, logger
 from participation_certificate.generate_certificates import Certificates
 from participation_certificate.preprocess_attendees import ProcessAttendees
+from participation_certificate.preprocess_speakers import ProcessSpeakers
 
-if __name__ == "__main__":
-    # CUSTOMIZE THIS
-    #  example uses `pandas` to load the data from an Excel file.
-    #  file to load the data from
-    # attendees_table = "attendees-pyconde-2024.xlsx"
-    # # columns to load from the file
-    # load_columns = {
-    #     "Ticket Full Name": "full_name",
-    #     "Ticket First Name": "first_name",
-    #     "Ticket Email": "email",
-    #     "Ticket Reference": "ticket_reference",
-    #     "Ticket": "attended_how",
-    # }
-    # function to select rows from the DataFrame
-    # def select_rows(data_frame: pd.DataFrame) -> pd.DataFrame:
-    #     """Remove rows that are not participants for example for luggage or childcare"""
-    #     data_frame = data_frame[
-    #         ~data_frame["Ticket"].str.contains("Social|luggage|Childcare|Keynote|TEST")
-    #     ].reindex()
-    #     data_frame = data_frame[~data_frame["Void Status"].fillna("").str.contains("voided")]
-    #     return data_frame
-    # function to select rows from the DataFrame
-    # def select_rows(data_frame: pd.DataFrame) -> pd.DataFrame:
-    #     """Remove rows that are not participants for example for luggage or childcare"""
-    #     return data_frame
-    #
-    # # update columns in the DataFrame based on the info
-    # # Transform ticket types to attended_how field: must be either "on site" or "remotely"
-    # transformers = {"Ticket": lambda x: "remotely" if "online" in x.lower() else "on site"}
 
+def _load_signing() -> tuple[Path | None, bytes | None]:
+    if not conf.signing.sign_key:
+        return None, None
+    sign_key = Path(conf.dirs.path_to_signatures) / conf.signing.sign_key
+    pw_path = Path(__file__).parents[1] / conf.signing.sign_password_path
+    sign_password = pw_path.read_bytes().strip()
+    return sign_key, sign_password
+
+
+def _batch_size_for(cert_type: str) -> int:
+    """Per-type batch_size override; falls back to the top-level batch_size."""
+    if cert_type != "attendee":
+        per_type = (conf.get(cert_type) or {}).get("batch_size")
+        if per_type:
+            return per_type
+    return conf.batch_size or 0
+
+
+def _apply_batch(attendees, cert_type: str):
+    n = _batch_size_for(cert_type)
+    if n:
+        clipped = attendees[:n]
+        print(f"Batch mode ({cert_type}): processing first {len(clipped)} of {len(attendees)}")
+        return clipped
+    return attendees
+
+
+def _generate(cert_type: str, attendees) -> None:
+    attendees = _apply_batch(attendees, cert_type)
+    sign_key, sign_password = _load_signing()
+    certs = Certificates(
+        attendees,
+        conf.event_short_name,
+        sign_key=sign_key,
+        sign_password=sign_password,
+        cert_type=cert_type,
+    )
+    certs.generate_certificates()
+
+
+def run_attendee() -> None:
     attendees_table = Path(__file__).parents[1] / conf.dirs.data_dir / conf.attendees_table
-
     load_columns = {
         "first name": "first_name",
         "email": "email",
         "comment": "attended_how",
         # Identity entries for derived columns added in select_rows below.
-        # pandas.rename ignores keys that don't exist in the source DataFrame.
         "full_name": "full_name",
         "ticket_reference": "ticket_reference",
     }
@@ -56,28 +79,51 @@ if __name__ == "__main__":
         data_frame["ticket_reference"] = data_frame["email"]
         return data_frame
 
-    # `comment` values are "onsite" / "remote"; Attendee.attended_how must be "on site" / "remotely".
     transformers = {
         "attended_how": lambda x: "remotely" if "remote" in str(x).lower() else "on site"
     }
+    participants = ProcessAttendees(attendees_table, load_columns, select_rows, transformers)
+    _generate("attendee", participants.attendees)
 
-    # noinspection PyTypeChecker
-    participants = ProcessAttendees(
-        attendees_table,
-        load_columns,
-        select_rows,
-        transformers,
+
+def run_masterclass() -> None:
+    cfg = conf.get("masterclass")
+    if not cfg or not cfg.get("enabled"):
+        sys.exit("masterclass.enabled is false — nothing to do.")
+    table = Path(__file__).parents[1] / conf.dirs.data_dir / cfg["attendees_table"]
+    load_columns = dict(cfg["load_columns"])
+    participants = ProcessAttendees(table, load_columns)
+    _generate("masterclass", participants.attendees)
+
+
+def run_speaker() -> None:
+    cfg = conf.get("speaker")
+    if not cfg or not cfg.get("enabled"):
+        sys.exit("speaker.enabled is false — nothing to do.")
+    source = Path(__file__).parents[1] / conf.dirs.data_dir / cfg["speakers_json"]
+    participants = ProcessSpeakers(source)
+    _generate("speaker", participants.attendees)
+
+
+DISPATCH = {
+    "attendee": run_attendee,
+    "masterclass": run_masterclass,
+    "speaker": run_speaker,
+}
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Generate one certificate type.")
+    parser.add_argument(
+        "--type",
+        choices=list(DISPATCH),
+        default="attendee",
+        help="Which certificate type to generate (default: attendee).",
     )
+    args = parser.parse_args()
+    logger.info(f"Generating {args.type} certificates for {conf.event_full_name}")
+    DISPATCH[args.type]()
 
-    attendees = participants.attendees
-    if conf.batch_size:
-        attendees = attendees[: conf.batch_size]
-        print(f"Batch mode: processing first {len(attendees)} of {len(participants.attendees)}")
 
-    certs = Certificates(
-        attendees,
-        conf.event_short_name,
-        sign_key=Path(__file__).parents[1] / "_signatures" / "keyStore.p12",
-        sign_password=b"cnweie2w873W",
-    )
-    certs.generate_certificates()
+if __name__ == "__main__":
+    main()

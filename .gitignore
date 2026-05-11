@@ -186,6 +186,7 @@ CLAUDE.local.md
 .chatgpt/
 .chatgpt.md
 .chatgpt.local.md
+.gemini
 
 # VS Code assistant plugins (like CodeGPT, Continue, etc.)
 .vscode/continue/
@@ -202,3 +203,7 @@ CLAUDE.local.md
 # macOS
 .DS_Store
 HelveticaNeue.ttc
+
+# other
+.ruff_cache
+config_local*
