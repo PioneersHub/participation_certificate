@@ -1,6 +1,8 @@
 # Walkthrough
 
-End-to-end runbook for issuing PyCon DE & PyData certificates of attendance: configure → generate → publish validation pages → send branded emails. The pipeline supports three cert types — **attendee**, **masterclass**, **speaker** — each generated independently from its own data source. Validation pages are published only for attendees; the other two types are delivered solely by email.
+End-to-end runbook for issuing conference certificates of attendance: configure → generate → publish validation pages → send branded emails. The pipeline supports three cert types — **attendee**, **masterclass**, **speaker** — each generated independently from its own data source. Validation pages are published only for attendees; the other two types are delivered solely by email.
+
+> **Boilerplate.** The examples below use placeholder names — `your-conference` as the event slug, `Your Conference 2026` as the display name, `your-conference.example.com` for the public website, `certs.example.com` / `your-bucket` for the S3 bucket, `mg.example.com` for the Mailgun domain, `certificates@example.com` for the sender. For a real event, swap these in `config_local.yaml` (gitignored, per-event).
 
 This page is the canonical source of truth. It is structured for both human operators and coding agents: every operational section follows the same shape — **Goal → Preconditions → Command → Verify → Troubleshoot** — and every command is copy-paste runnable.
 
@@ -35,7 +37,7 @@ For masterclass and speaker certs, swap `--type attendee` for `--type masterclas
 
 ### File map
 
-`EVENT_SHORT_NAME` is the value of `conf.event_short_name` (e.g. `2026-pyconde-pydata`). `TYPE_DIR` is `attendees`, `masterclasses`, or `speakers` (plural on disk). `UUID` and `UTC` are illustrative shell variables an agent can resolve by listing the tree.
+`EVENT_SHORT_NAME` is the value of `conf.event_short_name` (e.g. `your-conference`). `TYPE_DIR` is `attendees`, `masterclasses`, or `speakers` (plural on disk). `UUID` and `UTC` are illustrative shell variables an agent can resolve by listing the tree.
 
 | Purpose | Path (relative to repo root) |
 | --- | --- |
@@ -46,7 +48,7 @@ For masterclass and speaker certs, swap `--type attendee` for `--type masterclas
 | Signing keystore | `_signatures/keyStore.p12` |
 | Signing password (one-line plaintext) | `_signatures/keystore_password` |
 | Mailgun API key (one-line plaintext) | `_secret/mailgun_key` |
-| Brand logo (CID-inlined into every HTML email) | `assets/email/pyconde-pydata-2026-logo.png` |
+| Brand logo (CID-inlined into every HTML email) | `assets/email/your-conference-logo.png` |
 | Generated PDFs | `_certificates/${EVENT_SHORT_NAME}/${TYPE_DIR}/upload-to-certificates/${UUID}/${UUID}.pdf` |
 | Records (source of truth for retry) | `_certificates/${EVENT_SHORT_NAME}/${TYPE_DIR}/records/${UUID}.json` |
 | Email previews | `_certificates/${EVENT_SHORT_NAME}/${TYPE_DIR}/email-preview/${UUID}.html` and `${UUID}.txt` |
@@ -88,10 +90,10 @@ Every row's "Verify" command must exit 0 before the rest of the walkthrough can 
 | Signing keystore | `test -f _signatures/keyStore.p12` | Issued by the conference signing authority |
 | Signing password file | `test -s _signatures/keystore_password` | Provided alongside the keystore |
 | Mailgun API key | `test -s _secret/mailgun_key` | Mailgun dashboard → API keys |
-| Brand logo | `test -f assets/email/pyconde-pydata-2026-logo.png` | See `assets/email/README.md` — copy the Dark Blue variant from the Media Kit |
-| Attendee cert background | `test -f "graphics/2026 Attendee Certificate.pdf"` | Designed by the conference team; place in `graphics/` |
-| Masterclass cert background (if `masterclass.enabled`) | `test -f "graphics/2026 Masterclass Certificate.pdf"` | Same |
-| Speaker cert background (if `speaker.enabled`) | `test -f "graphics/2026 Speaker Certificate.pdf"` | Same |
+| Brand logo | `test -f assets/email/your-conference-logo.png` | See `assets/email/README.md` — copy the Dark Blue variant from the Media Kit |
+| Attendee cert background | `test -f "graphics/Attendee Certificate.pdf"` | Designed by the conference team; place in `graphics/` |
+| Masterclass cert background (if `masterclass.enabled`) | `test -f "graphics/Masterclass Certificate.pdf"` | Same |
+| Speaker cert background (if `speaker.enabled`) | `test -f "graphics/Speaker Certificate.pdf"` | Same |
 | Attendee CSV present | `uv run python -c "from participation_certificate import conf; from pathlib import Path; p=Path('_data')/conf.attendees_table; assert p.exists() and p.stat().st_size, p"` | Exported from the ticket system |
 
 Coding agents: run every Verify command before proceeding. Any non-zero exit means the prerequisite is unmet — fix and re-check before moving on.
@@ -174,56 +176,63 @@ print('OK' if not missing else f'MISSING: {missing}')
 # expect: OK
 ```
 
-### 3.3 Speaker — JSON
+### 3.3 Speaker — two JSON files joined on Speaker ID
 
-Source: `_data/${conf.speaker.speakers_json}`. Format: JSON array.
+Speaker certs require **two** JSON files. The split exists because the
+"speakers" export lists every proposal a person ever submitted; only the
+"sessions" export tells you which proposals were actually confirmed for the
+programme.
 
-Schema (one element per speaker; a speaker with N proposals produces N certs):
+| File (under `_data/`) | Role |
+| --- | --- |
+| `${conf.speaker.sessions_json}` | **Source of truth** for which certs to emit — one entry per confirmed session. |
+| `${conf.speaker.speakers_json}` | **Contact directory** — used to resolve each `Speaker ID` to an email. |
+
+**Sessions schema** (`sessions_json`) — each session can have multiple co-presenters; one cert is emitted per `(speaker, session)` pair:
 
 ```json
 [
   {
-    "ID": "speaker-id-string",
-    "Name": "Speaker Full Name",
-    "Email": "speaker@example.org",
-    "Proposal IDs": ["talk-1", "talk-2"],
-    "Proposal titles": ["First Talk", "Second Talk"]
+    "ID": "session-id-string",
+    "Proposal title": "Session title rendered on the cert",
+    "Session type": {"en": "Talk"},
+    "Speaker IDs": ["spkr-1", "spkr-2"],
+    "Speaker names": ["Speaker One", "Speaker Two"]
   }
 ]
 ```
 
-Flattening logic in `participation_certificate/preprocess_speakers.py`:
+**Speakers schema** (`speakers_json`) — only `ID`, `Name`, `Email` are read; any other keys (`Proposal IDs`, `Proposal titles`, …) are ignored:
 
-```python
-for proposal_id, proposal_title in zip(proposal_ids, proposal_titles, strict=False):
-    attendees.append(
-        Attendee(
-            full_name=full_name,
-            first_name=first_name,
-            email=email,
-            ticket_reference=proposal_id,
-            talk_title=proposal_title,
-            speaker_id=speaker_id,
-            proposal_id=proposal_id,
-        )
-    )
+```json
+[
+  {"ID": "spkr-1", "Name": "Speaker One", "Email": "one@example.org"}
+]
 ```
 
-`ticket_reference = proposal_id`, so the same speaker with two proposals gets two distinct UUIDs and two distinct emails.
+Join logic in `participation_certificate/preprocess_speakers.py`: for each confirmed session, look up each Speaker ID in the speakers map; emit an `Attendee` with `ticket_reference = session.ID`, `talk_title = session["Proposal title"]`, `speaker_id = the speaker's ID`. Sessions whose Speaker ID is missing from the speakers map produce a warning and are skipped — never silently dropped.
 
-Verify the schema and expected cert count:
+Verify schema, expected count, and that every confirmed session has a resolvable email:
 
 ```bash
 uv run python -c "
-import json
+import collections, json
 from participation_certificate import conf
-data = json.load(open('_data/' + conf.speaker.speakers_json))
-required = {'ID', 'Name', 'Email', 'Proposal IDs', 'Proposal titles'}
-bad = [s for s in data if not required.issubset(s.keys())]
-certs = sum(len(s['Proposal IDs']) for s in data)
-print(f'{len(data)} speakers, {certs} certs, {len(bad)} malformed')
+sessions = json.load(open('_data/' + conf.speaker.sessions_json))
+speakers = json.load(open('_data/' + conf.speaker.speakers_json))
+email_by_id = {s['ID']: (s.get('Email') or '').strip() for s in speakers if s.get('ID')}
+certs = sum(len(s.get('Speaker IDs') or []) for s in sessions)
+missing = [
+    (s['ID'], sid) for s in sessions for sid in (s.get('Speaker IDs') or [])
+    if sid not in email_by_id or not email_by_id[sid]
+]
+distinct = len({sid for s in sessions for sid in (s.get('Speaker IDs') or [])})
+print(f'{len(sessions)} confirmed sessions; {certs} certs across {distinct} distinct speakers')
+print(f'unresolvable (speaker, session) pairs: {len(missing)}')
+types = collections.Counter((s.get('Session type') or {}).get('en') for s in sessions)
+print('session types:', dict(types))
 "
-# expect: 0 malformed
+# expect: unresolvable == 0
 ```
 
 ## 4. Configuration
@@ -233,11 +242,11 @@ Configuration is layered: `config.yaml` (committed defaults; never edit per-even
 ### 4.1 Event metadata
 
 ```yaml
-event_short_name: "2026-pyconde-pydata"
-event_full_name: "PyCon DE & PyData 2026"
-certificates_url: "https://s3.eu-central-1.amazonaws.com/certificates.pycon.de/2026/"
-validation_url: "https://2026.pycon.de/attendee-certificate/"
-static_pages_website: "/Users/<you>/code/pioneershub/certificates-2026-pyconde-pydata"
+event_short_name: "your-conference"
+event_full_name: "Your Conference 2026"
+certificates_url: "https://s3.eu-central-1.amazonaws.com/certs.example.com/your-conference/"
+validation_url: "https://your-conference.example.com/attendee-certificate/"
+static_pages_website: "/path/to/your-website-checkout"
 ```
 
 `static_pages_website` is the local path to the PyCon website checkout; attendee validation pages are copied here by `validation_upload.py`.
@@ -245,7 +254,7 @@ static_pages_website: "/Users/<you>/code/pioneershub/certificates-2026-pyconde-p
 ### 4.2 Attendee source + batch size
 
 ```yaml
-attendees_table: "attendees-pyconde-pydata26.csv"
+attendees_table: "attendees-your-conference.csv"
 batch_size: 0   # 0 means "process all"; set to a small N (e.g. 5) for testing
 ```
 
@@ -255,7 +264,7 @@ batch_size: 0   # 0 means "process all"; set to a small N (e.g. 5) for testing
 signing:
   sign_key: "keyStore.p12"
   sign_password_path: "_signatures/keystore_password"
-  contact: "certificates@pycon.de"
+  contact: "certificates@example.com"
   location: "Digital Certificate"
   reason: "Certificate of Attendance Validation"
 ```
@@ -270,13 +279,13 @@ email:
     attendee: "Your Certificate of Attendance — ${event_full_name}"
     masterclass: "Your Masterclass Certificate — ${event_full_name}"
     speaker: "Your Speaker Certificate — ${event_full_name}"
-  bcc: ""   # set e.g. "certificates@pycon.de" for an audit copy on every send
+  bcc: ""   # set e.g. "certificates@example.com" for an audit copy on every send
 
 mailgun:
-  domain: "mg.pycon.de"
+  domain: "mg.example.com"
   region: "eu"                # "eu" or "us"
-  from_name: "PyCon DE & PyData 2026"
-  from_email: "certificates@pycon.de"
+  from_name: "Your Conference 2026"
+  from_email: "certificates@example.com"
   api_key_path: "_secret/mailgun_key"
   rate_limit_per_sec: 5
 ```
@@ -287,7 +296,7 @@ Subject templates support `${event_full_name}`, `${first_name}`, `${full_name}`,
 
 ```yaml
 branding:
-  logo_path: "assets/email/pyconde-pydata-2026-logo.png"
+  logo_path: "assets/email/your-conference-logo.png"
 ```
 
 ### 4.6 Optional cert types
@@ -295,7 +304,7 @@ branding:
 ```yaml
 masterclass:
   enabled: true
-  attendees_table: "pyconde-pydata-2026_checkin_Masterclasses.xlsx"
+  attendees_table: "your-conference-masterclasses.xlsx"
   load_columns:
     "Attendee name": "full_name"
     "Attendee name: Given name": "first_name"
@@ -303,18 +312,67 @@ masterclass:
     "Order code": "ticket_reference"
     "Product": "masterclass"
   pdf_background:
-    file: "2026 Masterclass Certificate.pdf"
+    file: "Masterclass Certificate.pdf"
   text_items: [ ... ]   # layout — see existing config_local.yaml
 
 speaker:
   enabled: true
-  speakers_json: "pyconde-pydata-2026_speakers.json"
+  # Source of truth for confirmed sessions (one cert per (speaker, session) pair).
+  sessions_json: "your-conference-sessions.json"
+  # Speaker directory — used to resolve Speaker IDs to emails.
+  speakers_json: "your-conference-speakers.json"
   pdf_background:
-    file: "2026 Speaker Certificate.pdf"
-  speaker_url_template: "https://2026.pycon.de/program/speakers/{attendee.speaker_id}/"
-  talk_url_template: "https://2026.pycon.de/program/talks/{attendee.proposal_id}/"
+    file: "Speaker Certificate.pdf"
+  speaker_url_template: "https://your-conference.example.com/program/speakers/{attendee.speaker_id}/"
+  talk_url_template: "https://your-conference.example.com/program/talks/{attendee.proposal_id}/"
   text_items: [ ... ]
 ```
+
+### 4.7 Email body — defaults + per-type overrides
+
+Body copy lives under `email.body`. The renderer merges `email.body.default` (shared by every cert type) with `email.body.<type>` (the per-type override): keys present in the type-specific block win on collision; any key not overridden falls back to default. This keeps event-wide copy in one place while letting each cert type customise the bits that genuinely differ.
+
+```yaml
+email:
+  body:
+    default:
+      greeting: "Dear ${first_name},"
+      cta_label: "Download your certificate"
+      signature: "All the best,"
+      sign_off: "The ${event_full_name} team"
+      # Other defaults — `download_intro`, `post_cta`, `closing` — typically
+      # set here too; per-type blocks override them as needed.
+
+    attendee:
+      intro: |
+        Your **Certificate of Attendance** for ${event_full_name} is attached.
+      post_cta: |
+        To verify authenticity, anyone can confirm your certificate at
+        [${validation_url}](${validation_url}).
+
+    masterclass:
+      intro: |
+        Your **Masterclass Certificate** for *${masterclass}* at
+        ${event_full_name} is attached.
+
+    speaker:
+      intro: |
+        Thank you for speaking at ${event_full_name}: ${talk_title}.
+  footer: |
+    This email was sent to you because you attended ${event_full_name}.
+    ${event_full_name} is brought to you by Your Organisation.
+    …
+```
+
+**Required fields** (after merging default + per-type, every cert type must
+have these or the renderer raises a clear `RuntimeError`):
+`greeting`, `intro`, `download_intro`, `cta_label`, `post_cta`, `closing`,
+`signature`, `sign_off`. Empty string is a legitimate value — it just renders
+nothing in that slot.
+
+**Markdown supported in body fields**: `**bold**`, `*italic*`, `[label](url)`.
+Converted to HTML in the HTML body, stripped to clean prose in the plain-text
+body (so `[Validate](https://…)` becomes `Validate (https://…)` in plain text).
 
 Verify the merged config:
 
@@ -324,9 +382,10 @@ from participation_certificate import conf
 print('event:', conf.event_short_name, '|', conf.event_full_name)
 print('mailgun:', conf.mailgun.domain, conf.mailgun.from_email)
 print('subjects:', dict(conf.email.subjects))
-assert conf.mailgun.domain and conf.mailgun.from_email and conf.email.subjects.attendee, 'missing required keys'
+if not (conf.mailgun.domain and conf.mailgun.from_email and conf.email.subjects.attendee):
+    raise SystemExit('missing required keys')
 "
-# expect: three lines + no AssertionError
+# expect: three lines + clean exit
 ```
 
 ## 5. Generate certificates
@@ -354,7 +413,7 @@ Run one cert type at a time. The generator is idempotent at the path level — r
   ```
 
 - **Troubleshoot:**
-  - `FileNotFoundError: graphics/2026 Attendee Certificate.pdf` — drop the background PDF in `graphics/`.
+  - `FileNotFoundError: graphics/Attendee Certificate.pdf` — drop the background PDF in `graphics/`.
   - `NO sign_key -> NOT signing` log line — set `signing.sign_key` and ensure `_signatures/keyStore.p12` + `_signatures/keystore_password` exist.
   - Only 2 records processed — `batch_size` in `config_local.yaml` is `2`; set to `0` to process all.
 
@@ -410,8 +469,8 @@ Run one cert type at a time. The generator is idempotent at the path level — r
 
 ## 6. Publish attendee validation pages
 
-- **Goal:** Make `https://2026.pycon.de/attendee-certificate/${UUID}/` resolve for every attendee. Only attendees are published; masterclass and speaker certs are not on the website.
-- **Preconditions:** §5.1 done. `conf.static_pages_website` points at a clone of the PyCon DE website repo with a clean `git status`.
+- **Goal:** Make `https://your-conference.example.com/attendee-certificate/${UUID}/` resolve for every attendee. Only attendees are published; masterclass and speaker certs are not on the website.
+- **Preconditions:** §5.1 done. `conf.static_pages_website` points at a clone of the conference website repo with a clean `git status`.
 - **Command:**
 
   ```bash
@@ -497,7 +556,7 @@ This step exercises the real Mailgun call with real cert content, but redirects 
   ```
 
 - **Verify (inbox):** for each of the N messages received, check:
-  - Branded header with the actual PyCon DE logo rendered (proves the CID inline embed worked).
+  - Branded header with the actual conference logo rendered (proves the CID inline embed worked).
   - Subject line matches `conf.email.subjects.attendee` after substitution.
   - Body copy contains the real first name, event name, download URL and validation URL (attendees only).
   - PDF attached; opening it shows the signed certificate with the real attendee's name.
@@ -506,7 +565,7 @@ This step exercises the real Mailgun call with real cert content, but redirects 
 - **Troubleshoot:**
   - Mailgun HTTP `401 Unauthorized` — wrong key in `_secret/mailgun_key` or wrong `mailgun.domain`.
   - Mailgun HTTP `404` — `mailgun.domain` is not provisioned on the Mailgun account.
-  - Logo missing in the inbox — `assets/email/pyconde-pydata-2026-logo.png` missing or wrong filename; re-check §2.
+  - Logo missing in the inbox — `assets/email/your-conference-logo.png` missing or wrong filename; re-check §2.
   - No messages received — confirm the inbox isn't a Mailgun-blocked test domain (use a real address).
 
 ## 9. Real send
@@ -519,7 +578,7 @@ This step exercises the real Mailgun call with real cert content, but redirects 
   uv run python participation_certificate/deliver_certificates.py --type attendee
   # repeat with --type masterclass and --type speaker as needed
   # optional flags:
-  #   --bcc certificates@pycon.de   audit copy of every send
+  #   --bcc certificates@example.com   audit copy of every send
   #   --limit 50                    roll out in waves
   #   --only 4600e5d3-...           resend a specific uuid
   ```
@@ -579,10 +638,57 @@ for ct in ('attendees', 'masterclasses', 'speakers'):
 "
 ```
 
-## 11. Operational notes
+## 11. Reissue a certificate with a corrected name
 
-- **Adding a new cert type.** Copy the `masterclass:` block in `config.yaml`, add a loader function in `participation_certificate/run.py`, drop a `<type>.{txt,html}` pair under `participation_certificate/email_templates/`, and add the type to `CERT_TYPES` in `participation_certificate/deliver_certificates.py`.
+When a recipient asks for a name correction (typo, married name, nickname that crept in from the ticket data), `reissue.py` re-cuts a single signed PDF — and only that one — while keeping every published identifier stable.
+
+- **Goal:** regenerate one cert's PDF + validation Lektor page locally with a corrected name. UUID, hash, S3 download URL, and `/attendee-certificate/${UUID}/` validation URL all stay the same so the recipient's existing email link keeps working.
+- **Preconditions:** §2 verifications pass; you have the cert's UUID; an active correction request from the recipient.
+- **Command:**
+
+  ```bash
+  uv run python participation_certificate/reissue.py \
+      --uuid <uuid> \
+      --full-name "Corrected Name" \
+      [--first-name "Corrected"]   # default: first whitespace-split word of --full-name
+      [--type attendee]            # attendee | masterclass | speaker
+      [--dry-run]                  # preview the diff, write nothing
+  ```
+
+- **What it changes locally** (atomic; same on-disk paths as the original):
+  - the signed PDF (re-signed under the original UUID)
+  - the record JSON (`mail_status` cleared so a follow-up `deliver --only` resends; `mail_message_id` + `mail_sent_at` of the *previous* send preserved as audit history)
+  - the validation Lektor `contents.lr` (attendee type only — masterclass/speaker never publish a validation page)
+- **What it does not change**: the UUID, the hash, the cert's "No. `<hash>`" serial number, anything outside the corrected name's row.
+- **Operator next steps** (the CLI prints these with paths + UUID filled in):
+
+  ```bash
+  UUID=<the uuid you reissued>
+
+  # 1. Replace the PDF on S3 (same key — overwrites)
+  aws s3 cp \
+    _certificates/${EVENT}/<type>/upload-to-certificates/${UUID}/${UUID}.pdf \
+    s3://your-bucket/your-conference/${UUID}/${UUID}.pdf
+
+  # 2. (attendee only) Push the new validation page to the PyCon website checkout
+  cp _certificates/${EVENT}/attendees/website-validate/${UUID}/contents.lr \
+    <WEBSITE>/content/attendee-certificate/${UUID}/contents.lr
+  (cd <WEBSITE> && git add -f content/attendee-certificate/${UUID}/contents.lr \
+    && git commit -m "reissue ${UUID}" && git push)
+
+  # 3. Resend the email
+  uv run python participation_certificate/deliver_certificates.py --type <type> --only ${UUID}
+  ```
+
+- **Troubleshoot:**
+  - `No record at …` — the UUID is wrong, or the cert hasn't been generated for that event yet.
+  - `Record file uuid <x> does not match path uuid <y>` — the record's filename and its `uuid` field disagree (shouldn't happen unless something is hand-edited); refuses rather than guess.
+  - `RuntimeError: uuid drifted / hash drifted / full_name not updated` — internal self-check failed; do not publish the result. File a bug.
+
+## 12. Operational notes
+
+- **Adding a new cert type.** Copy the `masterclass:` block in `config.yaml`, add a loader function in `participation_certificate/run.py`, drop the cert type's body block under `email.body.<type>` in `config_local.yaml`, and add the type to `CERT_TYPES` in `participation_certificate/deliver_certificates.py`.
 - **Force a resend of one record.** Prefer `--only ${UUID}` to manually editing the record JSON. Manual edits get out of sync with reality.
 - **Mailgun rate limit.** Tune `mailgun.rate_limit_per_sec` in `config_local.yaml` (default `5`). Mailgun's server-side limit on the free tier is higher, but this prevents accidental floods.
-- **Adding placeholders to a template.** Add the variable in `email_renderer._build_variables`, then reference `${var_name}` in the template. The renderer raises `KeyError` if a referenced variable is missing — that's the fail-fast guard.
+- **Adding placeholders to a template.** Add the variable in `email_renderer._build_variables`, then reference `${var_name}` in any body field under `email.body.<type>` in `config_local.yaml`. The renderer raises `KeyError` if a referenced variable is missing — that's the fail-fast guard.
 - **CI-friendliness.** Every Verify command in this walkthrough is shell-runnable and exits 0 on success — a coding agent can execute the doc end-to-end as a procedure.

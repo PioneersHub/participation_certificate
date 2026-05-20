@@ -26,8 +26,6 @@ Substitution is two-pass:
 Any unresolved ``${var}`` raises `KeyError` — fail-fast on a typo.
 """
 
-from __future__ import annotations
-
 import re
 from dataclasses import dataclass
 from pathlib import Path

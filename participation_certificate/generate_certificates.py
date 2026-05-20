@@ -201,6 +201,18 @@ class Certificates:
         # All cert types live under their own pluralised sub-directory:
         #   <event>/attendees, <event>/masterclasses, <event>/speakers.
         self.save_to = conf.dirs.path_to_certificates / self.event / type_subdir(cert_type)
+        # Cached background-PDF bytes, keyed by absolute path. Reading the same
+        # multi-megabyte file once per attendee was burning ~10 % of the wall
+        # time on a 2k-cert run; cache once + reparse from memory.
+        self._bg_cache: dict[Path, bytes] = {}
+
+    def _bg_bytes(self, bg_file: Path) -> bytes:
+        """Return the background PDF bytes, reading from disk only the first time."""
+        cached = self._bg_cache.get(bg_file)
+        if cached is None:
+            cached = bg_file.read_bytes()
+            self._bg_cache[bg_file] = cached
+        return cached
 
     def _type_conf(self):
         """Per-type config block. Returns the top-level conf for attendee, conf[cert_type] otherwise."""
@@ -290,8 +302,8 @@ class Certificates:
 
     def _generate_with_pdf_background(self, attendee, bg_file):  # noqa: PLR0915
         """Generate certificate with PDF background using pypdf/reportlab"""
-        # Read background PDF
-        reader = PdfReader(str(bg_file))
+        # Read background PDF from cached bytes (one disk read per Certificates instance).
+        reader = PdfReader(io.BytesIO(self._bg_bytes(bg_file)))
         background_page = reader.pages[0]
 
         # Get page dimensions
@@ -409,7 +421,10 @@ class Certificates:
         # Save attendee record (flat under records/<uuid>.json).
         record_path = self._record_path(attendee)
         record_path.parent.mkdir(parents=True, exist_ok=True)
-        json.dump(attendee.model_dump(), record_path.open("w"), indent=4)
+        record_path.write_text(
+            json.dumps(attendee.model_dump(), indent=4, ensure_ascii=False),
+            encoding="utf-8",
+        )
 
         # Validation Lektor page — only attendees get published on 2026.pycon.de.
         # Masterclass + speaker certs are delivered solely by email.
@@ -845,7 +860,10 @@ class Certificates:
 
         record_path = self._record_path(attendee)
         record_path.parent.mkdir(parents=True, exist_ok=True)
-        json.dump(attendee.model_dump(), record_path.open("w"), indent=4)
+        record_path.write_text(
+            json.dumps(attendee.model_dump(), indent=4, ensure_ascii=False),
+            encoding="utf-8",
+        )
 
         validate_dir = self._validate_dir(attendee)
         validate_dir.mkdir(parents=True, exist_ok=True)

@@ -40,46 +40,47 @@ uv pip install -r requirements-dev.txt
 ```
 
 ## Documentation
+
 ### Preview
 
 Run
-```
+
+```shell
 mkdocs serve
 ```
-to start the live-reloading docs server.
 
-The local website is run
-on [http://127.0.0.1:8000/participation_certificate/](http://127.0.0.1:8000/pytube/)
-
-MacOS-Error
->no library called "cairo-2" was found…
-
-can be fixed with:
-```
-export DYLD_FALLBACK_LIBRARY_PATH=/opt/homebrew/lib
-mkdocs serve
-```
-[See here for details](https://t.ly/MfX6u)
+to start the live-reloading docs server. The local site is served at
+[http://127.0.0.1:8000/](http://127.0.0.1:8000/).
 
 ### Publishing
 
-The documentation website is hosted at GitHub pages.
+The documentation website is hosted on GitHub Pages. To deploy:
 
-To deploy:
-```
+```shell
 mkdocs gh-deploy
 ```
 
-MacOS-Error
->no library called "cairo-2" was found…
+### Troubleshooting: cairo / social-card warnings on macOS
 
-can be fixed with:
-```
+`mkdocs-material`'s social-cards plugin uses `cairosvg`, which links against the
+system `libcairo`. On macOS without Homebrew's cairo, `mkdocs serve` /
+`mkdocs gh-deploy` emit:
+
+> no library called "cairo-2" was found…
+
+Two fixes:
+
+```shell
+# 1. Install cairo via Homebrew (one-time)
+brew install cairo
+
+# 2. Point Python at it for the current shell
 export DYLD_FALLBACK_LIBRARY_PATH=/opt/homebrew/lib
-mkdocs gh-deploy
+mkdocs serve   # or: mkdocs gh-deploy
 ```
 
-before running `mkdocs gh-deploy` to install the cairo library.
+The warnings are environment-only and do not change the rendered site;
+[see this note](https://t.ly/MfX6u) for the upstream context.
 
 ## Versioning Schema
 

@@ -1,11 +1,13 @@
 # PDF Background Feature Documentation
 
 ## Overview
+
 The PDF background feature allows you to use a professionally designed PDF as a background template for certificates, instead of generating backgrounds with colored rectangles. This enables complex designs, gradients, watermarks, and other graphical elements that would be difficult to create programmatically.
 
 ## Configuration
 
 ### Basic Setup
+
 Add the following configuration to your `config_local.yaml`:
 
 ```yaml
@@ -17,11 +19,12 @@ layout:
 ```
 
 ### Example Configuration
+
 ```yaml
 layout:
   pdf_background:
     enabled: true
-    file: "EuroScipy-2025-Certificate-of-Attendance.pdf"
+    file: "your-conference-background.pdf"
     page: 1
 
   # When pdf_background is enabled, the background rectangles are ignored
@@ -41,10 +44,11 @@ layout:
 4. **Security & Metadata**: Encryption, permissions, and metadata are applied to the final PDF
 
 ## File Structure
-```
+
+```text
 participation_certificate/
 ├── graphics/
-│   ├── EuroScipy-2025-Certificate-of-Attendance.pdf  # Background PDF
+│   ├── your-conference-background.pdf  # Background PDF
 │   ├── logo.png                                      # Overlay graphics
 │   └── signature.png                                 # Overlay graphics
 ├── config_local.yaml                                 # Your configuration
@@ -54,6 +58,7 @@ participation_certificate/
 ## Features
 
 ### Advantages
+
 - **Professional Designs**: Use designer-created templates
 - **Complex Backgrounds**: Support for gradients, patterns, watermarks
 - **Performance**: Pre-rendered backgrounds are faster than generating
@@ -61,6 +66,7 @@ participation_certificate/
 - **Backwards Compatible**: Existing colored rectangle backgrounds still work
 
 ### Limitations
+
 - Background PDF must be in the `graphics` directory
 - Only one page can be used as background (specified by `page` parameter)
 - Digital signatures may need additional configuration with pikepdf
@@ -75,6 +81,7 @@ participation_certificate/
    - Place in the `graphics` directory
 
 2. **Update configuration**
+
    ```yaml
    layout:
      pdf_background:
@@ -84,7 +91,9 @@ participation_certificate/
    ```
 
 3. **Remove PDF from graphics list**
+
    If you were previously including the PDF as a graphic element, remove it:
+
    ```yaml
    graphics:
      # Remove this entry:
@@ -96,16 +105,19 @@ participation_certificate/
 ## Troubleshooting
 
 ### Background PDF not found
+
 - Ensure the PDF exists in the `graphics` directory
 - Check the filename spelling in configuration
 - Verify the path: `graphics/your-background.pdf`
 
 ### Text not visible on background
+
 - Adjust text colors to contrast with the background
 - Check text positions to ensure they're within page bounds
 - Verify font colors in configuration
 
 ### Performance issues
+
 - Optimize background PDF file size
 - Use simpler PDF structures when possible
 - Consider caching for large batch generation
@@ -134,6 +146,7 @@ else:
 ## Future Enhancements
 
 Potential improvements for future versions:
+
 - Support for multiple background templates based on conditions
 - Dynamic background selection based on attendee attributes
 - Background scaling and positioning options

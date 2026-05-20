@@ -7,13 +7,22 @@
 event_short_name: ""
 # full name of the event, used in content
 event_full_name: ""
-# url to download certificates
+# Public HTTPS prefix for cert downloads, used in delivery emails.
+# Pattern: {certificates_url}{uuid}/{uuid}.pdf
+#   e.g. https://s3.eu-central-1.amazonaws.com/certs.example.com/your-conference/
 certificates_url: ""
-# Local path to the PyCon DE website checkout; attendee validation pages
+# Optional S3 write URI (`s3://bucket/prefix`) — printed by `reissue.py` as the
+# `aws s3 cp` target for a re-cut PDF. If empty, the runbook line says "push to
+# the configured S3 location" generically. Should mirror certificates_url's
+# bucket+prefix without the public-HTTPS wrapper:
+#   e.g. s3://certs.example.com/your-conference
+certificates_s3_uri: ""
+# Local path to the conference website checkout; attendee validation pages
 # (`<uuid>/contents.lr`) are synced here by validation_upload.py.
 static_pages_website: ""
 # Public URL prefix for the validation link printed on the PDF.
-# Pattern: {validation_url}{uuid}/  e.g. https://2026.pycon.de/attendee-certificate/<uuid>/
+# Pattern: {validation_url}{uuid}/
+#   e.g. https://your-conference.example.com/attendee-certificate/<uuid>/
 validation_url: ""
 # Attendee data file, relative to dirs.data_dir. CSV (.csv) or Excel (.xlsx).
 attendees_table: ""

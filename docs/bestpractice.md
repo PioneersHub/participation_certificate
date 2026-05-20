@@ -1,6 +1,6 @@
-### Tipps and Best Practices.
+# Tips and Best Practices
 
-#### Designing the Certificate: Layouting
+## Designing the Certificate: Layouting
 
 The layout is created by drawing elements on a canvas.
 Elements are placed on the canvas by assigning them coordinates.
@@ -8,7 +8,7 @@ This can be time-intensive and try-and-error.
 
 Design a layout, save it as background in the beginning and place elements accordingly.
 
-#### Designing the Certificate: Elements
+## Designing the Certificate: Elements
 
 Adding new elements will add them on top of existing elements at the coordinates.
 
@@ -25,7 +25,7 @@ class PDF(FPDF):
         pass  # do your stuff
 ```
 
-#### Design vs. Signing and Encryption
+## Design vs. Signing and Encryption
 
 A convenient way to design certificates is use to a PDF with a generic layout
 (e.g., designed in a design application), create a new PDF with the individual information
@@ -35,7 +35,7 @@ See [Adding content onto an existing PDF page](https://py-pdf.github.io/fpdf2/Co
 
 Downside: PDF created this way can **not** be signed or encrypted.
 
-#### Markdown in text for PDFs
+## Markdown in text for PDFs
 
 You can use markdown in the text for the PDFs.
 Make sure to load fonts for bold and italic text like:

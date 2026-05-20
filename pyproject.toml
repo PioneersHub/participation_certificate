@@ -36,7 +36,6 @@ dev = [
     "pytest-cov",
     "ruff>=0.4.8",
     "mypy",
-    "types-requests",
     "pre-commit",
 ]
 docs = [

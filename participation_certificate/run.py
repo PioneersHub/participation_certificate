@@ -18,15 +18,7 @@ from participation_certificate import conf, logger
 from participation_certificate.generate_certificates import Certificates
 from participation_certificate.preprocess_attendees import ProcessAttendees
 from participation_certificate.preprocess_speakers import ProcessSpeakers
-
-
-def _load_signing() -> tuple[Path | None, bytes | None]:
-    if not conf.signing.sign_key:
-        return None, None
-    sign_key = Path(conf.dirs.path_to_signatures) / conf.signing.sign_key
-    pw_path = Path(__file__).parents[1] / conf.signing.sign_password_path
-    sign_password = pw_path.read_bytes().strip()
-    return sign_key, sign_password
+from participation_certificate.signing import load_signing_key
 
 
 def _batch_size_for(cert_type: str) -> int:
@@ -54,7 +46,7 @@ def _apply_batch(attendees, cert_type: str):
 
 def _generate(cert_type: str, attendees) -> None:
     attendees = _apply_batch(attendees, cert_type)
-    sign_key, sign_password = _load_signing()
+    sign_key, sign_password = load_signing_key()
     certs = Certificates(
         attendees,
         conf.event_short_name,

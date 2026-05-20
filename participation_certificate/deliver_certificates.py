@@ -24,8 +24,6 @@ CLI:
         [--only <uuid> [--only <uuid>...]] [--limit N] [--bcc <addr>]
 """
 
-from __future__ import annotations
-
 import argparse
 import json
 from dataclasses import dataclass

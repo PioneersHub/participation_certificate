@@ -1,6 +1,6 @@
 # Design and ship PDF certificates
 
-Issue thousands of signed, secure PDFs and deliver them via branded HTML email — built around the PyCon DE & PyData certificate-of-attendance workflow but useable for any event-driven cert generation.
+Issue thousands of signed, secure PDFs and deliver them via branded HTML email — built around a conference certificate-of-attendance workflow; reusable for any event-driven cert generation.
 
 |                            | What it means                                                                |
 |----------------------------|------------------------------------------------------------------------------|
@@ -25,6 +25,8 @@ The pipeline supports three cert types:
 5. **Send** for real — Mailgun, branded HTML, PDF attached, persistent retry state.
 
 Each step is independent and can be reviewed before moving on. The complete runbook is the [Walkthrough](walkthrough.md).
+
+For correcting a single recipient's name after the fact, [`reissue.py`](walkthrough.md#11-reissue-a-certificate-with-a-corrected-name) re-cuts that one cert while keeping the UUID + hash stable, so the recipient's existing email link keeps working.
 
 Main libraries: [pypdf](https://py-pdf.github.io/) + [reportlab](https://www.reportlab.com/) for cert rendering, [endesive](https://github.com/m32/endesive) for digital signing, [httpx](https://www.python-httpx.org/) for the Mailgun REST client.
 

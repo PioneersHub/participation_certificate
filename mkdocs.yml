@@ -15,6 +15,8 @@ nav:
   - Getting Started:
     - Data Input Guide: data-input.md
     - Complete Walkthrough: walkthrough.md
+  - Features:
+    - PDF Background: pdf_background_feature.md
   - Best Practices: bestpractice.md
   - License: license.md
   - Pioneers Hub website: https://pioneershub.org/

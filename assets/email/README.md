@@ -3,6 +3,14 @@
 Assets used by the HTML certificate-delivery emails (see
 [`participation_certificate/email_templates/`](../../participation_certificate/email_templates/)).
 
+> **For a new event**: rename both files to your event's naming scheme (the
+> master to `<Your Event> Logo <variant>.png`, the working copy to
+> `your-conference-logo.png`), update `branding.logo_path` in
+> `config_local.yaml`, and update the `<img src="cid:...">` reference in
+> [`layout.html`](../../participation_certificate/email_templates/layout.html)
+> to match the new working-copy filename (Mailgun uses the bare filename as
+> the Content-ID).
+
 Two files live in this directory:
 
 | File | Role |

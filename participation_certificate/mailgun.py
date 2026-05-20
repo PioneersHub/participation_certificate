@@ -16,8 +16,6 @@ Config (under `mailgun:` in config.yaml / config_local.yaml):
 The API key file is a one-line plaintext file, read once at client construction.
 """
 
-from __future__ import annotations
-
 import time
 from dataclasses import dataclass
 from pathlib import Path
