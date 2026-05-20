@@ -7,7 +7,7 @@ Centralised here so the lookup logic lives in exactly one place.
 
 from pathlib import Path
 
-from participation_certificate import conf
+from participation_certificate import PROJECT_DIR, conf
 
 
 def load_signing_key() -> tuple[Path | None, bytes | None]:
@@ -21,5 +21,7 @@ def load_signing_key() -> tuple[Path | None, bytes | None]:
     if not conf.signing.sign_key:
         return None, None
     sign_key = Path(conf.dirs.path_to_signatures) / conf.signing.sign_key
-    pw_path = Path(__file__).parents[1] / conf.signing.sign_password_path
+    pw_path = Path(conf.signing.sign_password_path)
+    if not pw_path.is_absolute():
+        pw_path = PROJECT_DIR / pw_path
     return sign_key, pw_path.read_bytes().strip()

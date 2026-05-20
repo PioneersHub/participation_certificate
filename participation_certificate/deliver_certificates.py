@@ -32,7 +32,7 @@ from pathlib import Path
 
 from openpyxl import Workbook
 
-from participation_certificate import conf, logger
+from participation_certificate import PROJECT_DIR, conf, logger
 from participation_certificate.email_renderer import RenderedEmail, render_email
 from participation_certificate.generate_certificates import type_subdir
 from participation_certificate.mailgun import MailgunClient, MailgunSendError
@@ -55,7 +55,8 @@ class Job:
 
 
 def _type_root(cert_type: str) -> Path:
-    return Path(conf.dirs.path_to_certificates) / conf.event_short_name / type_subdir(cert_type)
+    # `path_to_certificates` is already project-scoped (PROJECT_DIR/_certificates).
+    return Path(conf.dirs.path_to_certificates) / type_subdir(cert_type)
 
 
 def _records_dir(cert_type: str) -> Path:
@@ -199,10 +200,12 @@ def _persist_status(job: Job, **updates: str | None) -> None:
 
 def _logo_path() -> Path:
     branding = conf.get("branding") or {}
-    raw = branding.get("logo_path") or "assets/email/pyconde-pydata-2026-logo.png"
+    raw = branding.get("logo_path")
+    if not raw:
+        raise RuntimeError("branding.logo_path is not configured")
     p = Path(raw)
     if not p.is_absolute():
-        p = Path(__file__).parents[1] / p
+        p = PROJECT_DIR / p
     if not p.exists():
         raise FileNotFoundError(
             f"Branding logo not found at {p}. Copy the chosen logo into place "

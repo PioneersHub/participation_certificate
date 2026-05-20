@@ -48,7 +48,8 @@ _PDF_MIN_BYTES = 10_000
 
 
 def _type_root(cert_type: str) -> Path:
-    return Path(conf.dirs.path_to_certificates) / conf.event_short_name / type_subdir(cert_type)
+    # `path_to_certificates` is already project-scoped (PROJECT_DIR/_certificates).
+    return Path(conf.dirs.path_to_certificates) / type_subdir(cert_type)
 
 
 def _record_path(cert_type: str, uuid: str) -> Path:

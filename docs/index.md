@@ -26,6 +26,14 @@ The pipeline supports three cert types:
 
 Each step is independent and can be reviewed before moving on. The complete runbook is the [Walkthrough](walkthrough.md).
 
+Configuration, secrets, source data, and outputs all live under `projects/<slug>/`. Activate one before running any CLI:
+
+```bash
+export CERTIFICATE_PROJECT_SLUG=<slug>   # name of a projects/<slug>/ dir
+```
+
+Start a new event by copying [`projects/sample_project`](https://github.com/PioneersHub/participation_certificate/tree/main/projects/sample_project) and filling in the placeholders.
+
 For correcting a single recipient's name after the fact, [`reissue.py`](walkthrough.md#11-reissue-a-certificate-with-a-corrected-name) re-cuts that one cert while keeping the UUID + hash stable, so the recipient's existing email link keeps working.
 
 Main libraries: [pypdf](https://py-pdf.github.io/) + [reportlab](https://www.reportlab.com/) for cert rendering, [endesive](https://github.com/m32/endesive) for digital signing, [httpx](https://www.python-httpx.org/) for the Mailgun REST client.

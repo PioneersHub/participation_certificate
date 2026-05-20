@@ -163,10 +163,26 @@ cython_debug/
 *.egg-info
 
 data/
-_*/
 graphics
 config_local.yaml
 !.gitignore
+
+# Legacy top-level per-event dirs — kept ignored in case anyone reverts a move locally
+_secret/
+_signatures/
+_data/
+_certificates/
+
+# Per-project state lives under projects/<slug>/. Everything is ignored
+# except the tracked sample_project skeleton (README + config.yaml).
+projects/*/_secret/
+projects/*/_signatures/
+projects/*/_data/
+projects/*/_certificates/
+projects/*/graphics/
+projects/*/branding/
+projects/*/config.yaml
+!projects/sample_project/config.yaml
 
 # Code Assistant Files
 

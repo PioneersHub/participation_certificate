@@ -23,18 +23,31 @@ Issue thousands of signed, secure PDF certificates per event and deliver them vi
 
 UUIDs and hashes are derived deterministically from `full_name + ticket_reference`, so re-runs are safe and reissues with a stable UUID are possible.
 
+## Per-project layout
+
+Configuration, secrets, source data, and outputs all live under `projects/<slug>/`. Start a new event by copying [`projects/sample_project/`](projects/sample_project/) and filling in the placeholders. Activate the project once per shell:
+
+```bash
+export CERTIFICATE_PROJECT_SLUG=<slug>   # name of a projects/<slug>/ dir
+```
+
+Every CLI in this repo refuses to run without `CERTIFICATE_PROJECT_SLUG` set and fails fast with a list of `projects/*` directories it can see.
+
 ## Operational pipeline (five steps)
 
 ```bash
 # 0. Bootstrap once per machine
 uv venv && uv pip install -e ".[dev]"
 
+# Select the active project (every CLI below requires this)
+export CERTIFICATE_PROJECT_SLUG=<slug>
+
 # 1. Generate signed PDFs per cert type
 uv run python participation_certificate/run.py --type attendee
 uv run python participation_certificate/run.py --type masterclass
 uv run python participation_certificate/run.py --type speaker
 
-# 2. Publish attendee validation pages to the PyCon website checkout
+# 2. Publish attendee validation pages to the website checkout
 uv run python participation_certificate/validation_upload.py
 
 # 3. Dry-run preview every email locally (writes HTML + xlsx index, sends nothing)
@@ -59,9 +72,10 @@ uv run python participation_certificate/reissue.py \
 ## Where things live
 
 - **Operator runbook** — [`docs/walkthrough.md`](docs/walkthrough.md) is the canonical step-by-step, structured for both humans and coding agents (Goal → Preconditions → Command → Verify → Troubleshoot per step).
-- **Configuration** — `config.yaml` (committed defaults; documented schema) overridden by `config_local.yaml` (gitignored; per-event values). All editable email copy is under `email:` — subjects, layered `body.default` + `body.<type>`, shared legal footer.
-- **Brand assets** — [`assets/email/README.md`](assets/email/README.md) explains the master/working-copy split for the email-header logo.
-- **Future agents** — root [`CLAUDE.md`](CLAUDE.md) has the architecture brief; per-project skill files (if any) live there too.
+- **Configuration** — [`config.yaml`](config.yaml) (repo-wide defaults; documented schema) overlaid by [`projects/<slug>/config.yaml`](projects/sample_project/config.yaml) (gitignored except the sample). All editable email copy is under `email:` — subjects, layered `body.default` + `body.<type>`, shared legal footer.
+- **New event** — copy [`projects/sample_project/`](projects/sample_project/) and fill in placeholders.
+- **Brand assets** — [`docs/branding.md`](docs/branding.md) explains the per-project `branding/{logo.png, master.png}` and how the CID inlining works.
+- **Future agents** — root [`CLAUDE.md`](CLAUDE.md) has the architecture brief.
 
 ## Realization
 

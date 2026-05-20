@@ -198,9 +198,11 @@ class Certificates:
         self.sign_key: Path | None = sign_key
         self.sign_password: bytes | None = sign_password
         self.cert_type: str = cert_type
-        # All cert types live under their own pluralised sub-directory:
-        #   <event>/attendees, <event>/masterclasses, <event>/speakers.
-        self.save_to = conf.dirs.path_to_certificates / self.event / type_subdir(cert_type)
+        # All cert types live under their own pluralised sub-directory.
+        # `path_to_certificates` is already project-scoped (resolved against
+        # PROJECT_DIR in participation_certificate/__init__.py), so we do NOT
+        # add another <event> middle component here.
+        self.save_to = conf.dirs.path_to_certificates / type_subdir(cert_type)
         # Cached background-PDF bytes, keyed by absolute path. Reading the same
         # multi-megabyte file once per attendee was burning ~10 % of the wall
         # time on a 2k-cert run; cache once + reparse from memory.

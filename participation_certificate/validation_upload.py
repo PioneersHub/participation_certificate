@@ -24,16 +24,18 @@ from participation_certificate.generate_certificates import (
 )
 from participation_certificate.models.attendee import Attendee
 
-EVENT_ROOT = Path(__file__).parents[1] / conf.dirs.path_to_certificates / conf.event_short_name
+# `path_to_certificates` is already project-scoped (PROJECT_DIR/_certificates),
+# so the cert tree root is just that path — no extra <event> middle component.
+CERTS_ROOT = Path(conf.dirs.path_to_certificates)
 
 
 def sync_attendee_validation(replace: bool = False) -> None:
-    """Copy every attendee `website-validate/<uuid>/contents.lr` to the PyCon checkout.
+    """Copy every attendee `website-validate/<uuid>/contents.lr` to the website checkout.
 
     If a local file is missing for a record, regenerate it from the record JSON
     (cheap; covers the "I wiped the staging dir" case).
     """
-    root = EVENT_ROOT / type_subdir("attendee")
+    root = CERTS_ROOT / type_subdir("attendee")
     records_dir = root / "records"
     if not records_dir.exists():
         logger.info(f"No records dir at {records_dir} — nothing to sync.")

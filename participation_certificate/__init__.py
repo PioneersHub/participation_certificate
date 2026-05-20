@@ -1,6 +1,7 @@
 __version__ = "0.9.0"
 
 import logging
+import os
 import sys
 from pathlib import Path
 
@@ -73,19 +74,46 @@ structlog.configure(
 structlog.configure(processors=structlog.get_config()["processors"][:-1] + [cr])
 logger = structlog.get_logger()
 
-global_conf = OmegaConf.load(Path(__file__).parents[1] / "config.yaml")
-local_config_path = Path(__file__).parents[1] / "config_local.yaml"
-if not local_config_path.exists():
-    with local_config_path.open("w") as f:
-        f.write("""# LOCAL configuration, any key here will overwrite the default configuration
-# NEVER COMMIT THIS FILE TO GIT
-# ########################################""")
-local_conf = OmegaConf.load(local_config_path)
+# Active project is selected via the CERTIFICATE_PROJECT_SLUG env var; per-event
+# config + secrets + data + outputs all live under projects/<slug>/. Repo-root
+# config.yaml supplies committed defaults that are overlaid by the per-project
+# config.yaml. fonts/ + email_templates/ stay repo-wide.
+_REPO_ROOT = Path(__file__).parents[1]
+_PROJECTS_DIR = _REPO_ROOT / "projects"
+_PROJECT_SLUG = os.environ.get("CERTIFICATE_PROJECT_SLUG")
+if not _PROJECT_SLUG:
+    _available = (
+        sorted(p.name for p in _PROJECTS_DIR.iterdir() if p.is_dir())
+        if _PROJECTS_DIR.exists()
+        else []
+    )
+    raise SystemExit(
+        "CERTIFICATE_PROJECT_SLUG env var is not set.\n"
+        f"  Set it to one of: {_available or '(no projects/ subdirectories found)'}\n"
+        "  e.g.  export CERTIFICATE_PROJECT_SLUG=<slug>"
+    )
+
+PROJECT_DIR = _PROJECTS_DIR / _PROJECT_SLUG
+if not PROJECT_DIR.is_dir():
+    raise SystemExit(
+        f"Project directory not found: {PROJECT_DIR}\n"
+        f"  CERTIFICATE_PROJECT_SLUG={_PROJECT_SLUG!r} does not match an existing folder."
+    )
+
+_project_config_path = PROJECT_DIR / "config.yaml"
+if not _project_config_path.exists():
+    raise SystemExit(f"Project config not found: {_project_config_path}")
+
+global_conf = OmegaConf.load(_REPO_ROOT / "config.yaml")
+local_conf = OmegaConf.load(_project_config_path)
 conf = OmegaConf.merge(global_conf, local_conf)
 
-# make dirs in config to Path objects
-for k, dir_from_project_root in conf.dirs.items():
-    conf.dirs[k] = Path(__file__).parents[1] / dir_from_project_root
+# Resolve dirs.* into absolute Paths. fonts_dir is repo-wide; everything else
+# is project-relative so an event's whole state stays self-contained.
+_REPO_RELATIVE_DIR_KEYS = frozenset({"fonts_dir"})
+for k, rel_path in conf.dirs.items():
+    base = _REPO_ROOT if k in _REPO_RELATIVE_DIR_KEYS else PROJECT_DIR
+    conf.dirs[k] = base / rel_path
 
 all_fonts = list(conf.dirs.fonts_dir.rglob("*.ttf"))
 logger.debug(f"Found {len(all_fonts)} fonts in {conf.dirs.fonts_dir.name}")

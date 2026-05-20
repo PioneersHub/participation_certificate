@@ -24,7 +24,7 @@ from typing import Self
 
 import httpx
 
-from participation_certificate import conf, logger
+from participation_certificate import PROJECT_DIR, conf, logger
 
 _EU_HOST = "https://api.eu.mailgun.net"
 _US_HOST = "https://api.mailgun.net"
@@ -96,9 +96,12 @@ class MailgunClient:
             raise RuntimeError("mailgun.from_email is not configured")
         from_header = f"{from_name} <{from_email}>" if from_name else from_email
 
-        key_path = Path(mg.get("api_key_path") or "_secret/mailgun_key")
+        api_key_path = mg.get("api_key_path")
+        if not api_key_path:
+            raise RuntimeError("mailgun.api_key_path is not configured")
+        key_path = Path(api_key_path)
         if not key_path.is_absolute():
-            key_path = Path(__file__).parents[1] / key_path
+            key_path = PROJECT_DIR / key_path
         if not key_path.exists():
             raise RuntimeError(f"mailgun api key file missing: {key_path}")
         api_key = key_path.read_text(encoding="utf-8").strip()

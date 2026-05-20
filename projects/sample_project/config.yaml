@@ -1,0 +1,171 @@
+# sample_project — per-event template. Copy to projects/<your-slug>/config.yaml
+# and edit the placeholder values for a new event. Activate via:
+#   export CERTIFICATE_PROJECT_SLUG=<your-slug>
+# ########################################
+# METADATA
+# ########################################
+# Used in paths + email subjects + body substitutions.
+event_short_name: "your-conference"
+event_full_name: "Your Conference 2026"
+# Public HTTPS prefix for cert downloads (used in delivery emails).
+# Pattern: {certificates_url}{uuid}/{uuid}.pdf
+certificates_url: "https://s3.example.com/your-bucket/your-conference/"
+# Matching s3:// write target printed by reissue.py's runbook.
+certificates_s3_uri: "s3://your-bucket/your-conference"
+# Public URL prefix for the validation link on the cert PDF (attendee only).
+validation_url: "https://your-conference.example.com/attendee-certificate/"
+# Local path to the conference website checkout where attendee validation
+# pages are synced by validation_upload.py. Absolute path.
+static_pages_website: "/path/to/your-website-checkout"
+# Attendee data file, relative to dirs.data_dir.
+attendees_table: "attendees-your-conference.csv"
+# Process only the first N rows (testing). 0 = process all.
+batch_size: 0
+# ########################################
+# SIGNING
+# ########################################
+signing:
+  sign_key: "keyStore.p12"                          # under _signatures/
+  sign_password_path: "_signatures/keystore_password"
+  contact: "certificates@example.com"
+  location: "Digital Certificate"
+  reason: "Certificate of Attendance Validation"
+# ########################################
+# EMAIL CONTENT
+# ########################################
+email:
+  subjects:
+    attendee: "Your Certificate of Attendance — ${event_full_name}"
+    masterclass: "Your Masterclass Certificate — ${event_full_name}"
+    speaker: "Your Speaker Certificate — ${event_full_name}"
+  bcc: ""   # e.g. "certificates@example.com" for an audit copy
+  body:
+    default:
+      greeting: "Dear ${first_name},"
+      cta_label: "Download your certificate"
+      download_intro: |
+        You can also download it any time from the link below.
+      post_cta: |
+        The certificate is issued from the details you provided at registration;
+        we are unable to change those after the fact.
+      closing: |
+        Thank you for being part of ${event_full_name} — we hope to see you again.
+      signature: "All the best,"
+      sign_off: "The ${event_full_name} team"
+    attendee:
+      intro: |
+        Your **Certificate of Attendance** for ${event_full_name} is attached to this email.
+      post_cta: |
+        To verify authenticity, anyone can confirm your certificate on the conference
+        website: [${validation_url}](${validation_url})
+    masterclass:
+      intro: |
+        Your **Masterclass Certificate** for *${masterclass}* at ${event_full_name}
+        is attached.
+    speaker:
+      intro: |
+        Thank you for speaking at ${event_full_name}: ${talk_title}.
+      download_intro: |
+        Your **Speaker Certificate** is attached. You can also download
+        it any time from the link below.
+  footer: |
+    This email was sent to you because you took part in ${event_full_name}.
+    ${event_full_name} is brought to you by Your Organisation.
+    Address line 1, postcode City, Country.
+# ########################################
+# MAILGUN TRANSPORT
+# ########################################
+mailgun:
+  domain: "mg.example.com"
+  region: "eu"                                # "eu" or "us"
+  from_name: "Your Conference 2026"
+  from_email: "certificates@example.com"
+  api_key_path: "_secret/mailgun_key"          # project-relative
+  rate_limit_per_sec: 5
+# ########################################
+# BRANDING
+# ########################################
+branding:
+  # CID-inlined into every HTML email. Standardised filename — the layout's
+  # `<img src="cid:logo.png">` matches the bare filename Mailgun assigns.
+  logo_path: "branding/logo.png"
+# ########################################
+# FONTS
+# ########################################
+fonts:
+  auto_load_ttf: true
+  default_font: "ibmplexsans"
+  default_size: 12
+  custom_fonts:
+    ibmplexsans:
+      regular: "IBMPlexSans/IBMPlexSans-Regular.ttf"
+      bold: "IBMPlexSans/IBMPlexSans-Bold.ttf"
+  initial_font:
+    name: "ibmplexsans"
+    size: 12
+    style: ""
+# ########################################
+# LAYOUT (cert PDF text placement)
+# ########################################
+# `pdf_background.file` is relative to dirs.graphics.
+layout:
+  pdf_background:
+    enabled: true
+    file: "Attendee Certificate.pdf"
+    page: 1
+  default:
+    font:
+      size: 12
+      name: "ibmplexsans"
+      style: ""
+      color: [0, 0, 0]
+    width: 200
+  text_items:
+    - text: "{attendee.full_name}"
+      position: [356, 153]
+      font:
+        name: "ibmplexsans"
+        size: 24
+        style: "B"
+        color: [0, 0, 0]
+    - text: "No. {attendee.hash}{attended_how_display}"
+      position: [780, 96]
+      align: right
+      font:
+        name: "ibmplexsans"
+        size: 10
+        style: "B"
+        color: [80, 80, 80]
+    - text: "[Validate this certificate online]({validation_url}{attendee.uuid}/)"
+      position: [356, 558]
+      font:
+        name: "ibmplexsans"
+        size: 10
+        color: [77, 170, 220]
+  graphics:
+  footer: {}
+# ########################################
+# OPTIONAL CERT TYPES
+# ########################################
+# masterclass:
+#   enabled: true
+#   attendees_table: "your-conference-masterclasses.xlsx"
+#   load_columns:
+#     "Attendee name": "full_name"
+#     "Attendee name: Given name": "first_name"
+#     "Email": "email"
+#     "Order code": "ticket_reference"
+#     "Product": "masterclass"
+#   pdf_background:
+#     file: "Masterclass Certificate.pdf"
+#   text_items: [...]
+#
+# speaker:
+#   enabled: true
+#   sessions_json: "your-conference-sessions.json"
+#   speakers_json: "your-conference-speakers.json"
+#   pdf_background:
+#     file: "Speaker Certificate.pdf"
+#   speaker_url_template: "https://your-conference.example.com/program/speakers/{attendee.speaker_id}/"
+#   talk_url_template: "https://your-conference.example.com/program/talks/{attendee.proposal_id}/"
+#   text_items: [...]

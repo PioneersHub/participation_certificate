@@ -70,19 +70,23 @@ speaker:
 # ########################################
 # DIRECTORIES
 # ########################################
-# Each directory is relative to the root of the project and will be created if
-# it does not exist
+# Directories. Resolved by participation_certificate/__init__.py:
+#   - `fonts_dir` is REPO-WIDE — resolved against the repo root (shared across
+#     every project).
+#   - All other keys are PROJECT-RELATIVE — resolved against
+#     `projects/${CERTIFICATE_PROJECT_SLUG}/`. Rename the value here (or in the
+#     per-project config.yaml) to relocate; downstream code only ever sees the
+#     resolved absolute path.
 dirs:
-  # Default directory to store PDF certificates, excluded via .gitignore
+  # Output PDFs + records + email previews + validation pages (project-relative).
   path_to_certificates: "./_certificates"
-  # Directory for cryptographic keys, certificates to sign PDF
+  # PKCS#12 keystore + password file live here (project-relative).
   path_to_signatures: "./_signatures"
-  # Directory for local fonts like. Add fonts in by font family name:
-  # fonts/<font family name>, excluded via .gitignore
+  # Shared TTF fonts — REPO-WIDE; do not duplicate per project.
   fonts_dir: "./fonts"
-  # Directory for local data, excluded via .gitignore
+  # Per-event source data (CSV / XLSX / JSON) (project-relative).
   data_dir: "./_data"
-  # local path to graphic files
+  # Per-event cert-background PDFs + sponsor logos (project-relative).
   graphics: "./graphics"
 # ########################################
 # FONTS

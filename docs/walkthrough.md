@@ -11,8 +11,11 @@ This page is the canonical source of truth. It is structured for both human oper
 ### Canonical command sequence (one event, attendee type)
 
 ```bash
-# one-time bootstrap
+# one-time bootstrap (repo-wide)
 uv venv && uv pip install -e ".[dev]"
+
+# Select the active project. Every CLI below refuses to run without this set.
+export CERTIFICATE_PROJECT_SLUG=your-conference     # name of a projects/<slug>/ dir
 
 # generate
 uv run python participation_certificate/run.py --type attendee
@@ -23,7 +26,7 @@ uv run python participation_certificate/validation_upload.py
 # preview every email locally — write HTML + xlsx index, send nothing
 uv run python participation_certificate/deliver_certificates.py --type attendee --dry-run
 
-# review _certificates/<event>/attendees/email-preview/*.html in a browser
+# review projects/$CERTIFICATE_PROJECT_SLUG/_certificates/attendees/email-preview/*.html in a browser
 
 # smoke test: real send to a single inbox; records NOT modified
 uv run python participation_certificate/deliver_certificates.py \
@@ -37,23 +40,25 @@ For masterclass and speaker certs, swap `--type attendee` for `--type masterclas
 
 ### File map
 
-`EVENT_SHORT_NAME` is the value of `conf.event_short_name` (e.g. `your-conference`). `TYPE_DIR` is `attendees`, `masterclasses`, or `speakers` (plural on disk). `UUID` and `UTC` are illustrative shell variables an agent can resolve by listing the tree.
+Every per-event artefact lives under `projects/${CERTIFICATE_PROJECT_SLUG}/`. The env var `CERTIFICATE_PROJECT_SLUG` (set in the shell before any CLI runs) selects the active project; missing it fails fast with a list of available projects. `TYPE_DIR` is `attendees`, `masterclasses`, or `speakers` (plural on disk). `UUID` and `UTC` are illustrative shell variables an agent can resolve by listing the tree.
 
 | Purpose | Path (relative to repo root) |
 | --- | --- |
-| Event-level config (gitignored) | `config_local.yaml` |
-| Project defaults | `config.yaml` |
-| Source data files | `_data/` |
-| Cert background PDFs | `graphics/` |
-| Signing keystore | `_signatures/keyStore.p12` |
-| Signing password (one-line plaintext) | `_signatures/keystore_password` |
-| Mailgun API key (one-line plaintext) | `_secret/mailgun_key` |
-| Brand logo (CID-inlined into every HTML email) | `assets/email/your-conference-logo.png` |
-| Generated PDFs | `_certificates/${EVENT_SHORT_NAME}/${TYPE_DIR}/upload-to-certificates/${UUID}/${UUID}.pdf` |
-| Records (source of truth for retry) | `_certificates/${EVENT_SHORT_NAME}/${TYPE_DIR}/records/${UUID}.json` |
-| Email previews | `_certificates/${EVENT_SHORT_NAME}/${TYPE_DIR}/email-preview/${UUID}.html` and `${UUID}.txt` |
-| Send-attempt index (one per CLI invocation) | `_certificates/${EVENT_SHORT_NAME}/${TYPE_DIR}/email-preview/send-preview-${UTC}.xlsx` |
-| Attendee validation Lektor staging | `_certificates/${EVENT_SHORT_NAME}/attendees/website-validate/${UUID}/contents.lr` |
+| Repo-wide config defaults | `config.yaml` |
+| Per-event config | `projects/${CERTIFICATE_PROJECT_SLUG}/config.yaml` |
+| Source data files | `projects/${CERTIFICATE_PROJECT_SLUG}/_data/` |
+| Cert background PDFs | `projects/${CERTIFICATE_PROJECT_SLUG}/graphics/` |
+| Signing keystore | `projects/${CERTIFICATE_PROJECT_SLUG}/_signatures/keyStore.p12` |
+| Signing password (one-line plaintext) | `projects/${CERTIFICATE_PROJECT_SLUG}/_signatures/keystore_password` |
+| Mailgun API key (one-line plaintext) | `projects/${CERTIFICATE_PROJECT_SLUG}/_secret/mailgun_key` |
+| Brand logo (CID-inlined into every HTML email) | `projects/${CERTIFICATE_PROJECT_SLUG}/branding/logo.png` |
+| Generated PDFs | `projects/${CERTIFICATE_PROJECT_SLUG}/_certificates/${TYPE_DIR}/upload-to-certificates/${UUID}/${UUID}.pdf` |
+| Records (source of truth for retry) | `projects/${CERTIFICATE_PROJECT_SLUG}/_certificates/${TYPE_DIR}/records/${UUID}.json` |
+| Email previews | `projects/${CERTIFICATE_PROJECT_SLUG}/_certificates/${TYPE_DIR}/email-preview/${UUID}.html` and `${UUID}.txt` |
+| Send-attempt index (one per CLI invocation) | `projects/${CERTIFICATE_PROJECT_SLUG}/_certificates/${TYPE_DIR}/email-preview/send-preview-${UTC}.xlsx` |
+| Attendee validation Lektor staging | `projects/${CERTIFICATE_PROJECT_SLUG}/_certificates/attendees/website-validate/${UUID}/contents.lr` |
+| Shared TTF fonts (repo-wide) | `fonts/` |
+| Shared HTML / text layout (repo-wide) | `participation_certificate/email_templates/layout.{html,txt}` |
 
 ## 1. Pipeline overview
 
@@ -61,7 +66,7 @@ For masterclass and speaker certs, swap `--type attendee` for `--type masterclas
 _data/                    config_local.yaml + config.yaml
    |                              |
    v                              v
-run.py --type X  ->  _certificates/<event>/<type>/{upload-to-certificates, records, website-validate}
+run.py --type X  ->  projects/<slug>/_certificates/<type>/{upload-to-certificates, records, website-validate}
                               |
         +---------------------+--------------------------+
         |                                                |
@@ -87,13 +92,15 @@ Every row's "Verify" command must exit 0 before the rest of the walkthrough can 
 | Python 3.12+ | `python3 --version` | <https://www.python.org/downloads/> |
 | `uv` installed | `uv --version` | `pipx install uv` or <https://github.com/astral-sh/uv> |
 | Project deps installed | `uv run python -c "import participation_certificate"` | `uv venv && uv pip install -e ".[dev]"` |
-| Signing keystore | `test -f _signatures/keyStore.p12` | Issued by the conference signing authority |
-| Signing password file | `test -s _signatures/keystore_password` | Provided alongside the keystore |
-| Mailgun API key | `test -s _secret/mailgun_key` | Mailgun dashboard → API keys |
-| Brand logo | `test -f assets/email/your-conference-logo.png` | See `assets/email/README.md` — copy the Dark Blue variant from the Media Kit |
-| Attendee cert background | `test -f "graphics/Attendee Certificate.pdf"` | Designed by the conference team; place in `graphics/` |
-| Masterclass cert background (if `masterclass.enabled`) | `test -f "graphics/Masterclass Certificate.pdf"` | Same |
-| Speaker cert background (if `speaker.enabled`) | `test -f "graphics/Speaker Certificate.pdf"` | Same |
+| Active project | `test -n "${CERTIFICATE_PROJECT_SLUG}" && test -d "projects/${CERTIFICATE_PROJECT_SLUG}"` | `export CERTIFICATE_PROJECT_SLUG=<slug>` (or copy `projects/sample_project` for a new event) |
+| Project config | `test -f "projects/${CERTIFICATE_PROJECT_SLUG}/config.yaml"` | Lives at `projects/${CERTIFICATE_PROJECT_SLUG}/config.yaml` |
+| Signing keystore | `test -f "projects/${CERTIFICATE_PROJECT_SLUG}/_signatures/keyStore.p12"` | Issued by the conference signing authority |
+| Signing password file | `test -s "projects/${CERTIFICATE_PROJECT_SLUG}/_signatures/keystore_password"` | Provided alongside the keystore |
+| Mailgun API key | `test -s "projects/${CERTIFICATE_PROJECT_SLUG}/_secret/mailgun_key"` | Mailgun dashboard → API keys |
+| Brand logo | `test -f "projects/${CERTIFICATE_PROJECT_SLUG}/branding/logo.png"` | See [`docs/branding.md`](branding.md) |
+| Attendee cert background | `test -f "projects/${CERTIFICATE_PROJECT_SLUG}/graphics/Attendee Certificate.pdf"` | Designed by the conference team |
+| Masterclass cert background (if `masterclass.enabled`) | `test -f "projects/${CERTIFICATE_PROJECT_SLUG}/graphics/Masterclass Certificate.pdf"` | Same |
+| Speaker cert background (if `speaker.enabled`) | `test -f "projects/${CERTIFICATE_PROJECT_SLUG}/graphics/Speaker Certificate.pdf"` | Same |
 | Attendee CSV present | `uv run python -c "from participation_certificate import conf; from pathlib import Path; p=Path('_data')/conf.attendees_table; assert p.exists() and p.stat().st_size, p"` | Exported from the ticket system |
 
 Coding agents: run every Verify command before proceeding. Any non-zero exit means the prerequisite is unmet — fix and re-check before moving on.
@@ -405,10 +412,9 @@ Run one cert type at a time. The generator is idempotent at the path level — r
 - **Verify:**
 
   ```bash
-  EVENT="$(uv run python -c 'from participation_certificate import conf; print(conf.event_short_name)')"
-  ls "_certificates/${EVENT}/attendees/upload-to-certificates" | wc -l   # N PDFs
-  ls "_certificates/${EVENT}/attendees/records" | wc -l                  # N record JSONs
-  ls "_certificates/${EVENT}/attendees/website-validate" | wc -l         # N validate pages
+  ls "projects/${CERTIFICATE_PROJECT_SLUG}/_certificates/attendees/upload-to-certificates" | wc -l   # N PDFs
+  ls "projects/${CERTIFICATE_PROJECT_SLUG}/_certificates/attendees/records" | wc -l                  # N record JSONs
+  ls "projects/${CERTIFICATE_PROJECT_SLUG}/_certificates/attendees/website-validate" | wc -l         # N validate pages
   # All three counts must match the row count of the attendee CSV (modulo batch_size).
   ```
 
@@ -430,9 +436,8 @@ Run one cert type at a time. The generator is idempotent at the path level — r
 - **Verify:**
 
   ```bash
-  EVENT="$(uv run python -c 'from participation_certificate import conf; print(conf.event_short_name)')"
-  ls "_certificates/${EVENT}/masterclasses/upload-to-certificates" | wc -l   # N PDFs
-  ls "_certificates/${EVENT}/masterclasses/records" | wc -l                   # N records
+    ls "projects/${CERTIFICATE_PROJECT_SLUG}/_certificates/masterclasses/upload-to-certificates" | wc -l   # N PDFs
+  ls "projects/${CERTIFICATE_PROJECT_SLUG}/_certificates/masterclasses/records" | wc -l                   # N records
   # No new website-validate entries are produced for masterclass certs — that
   # tree only exists for attendees by design. A pre-existing
   # masterclasses/website-validate/ directory from before this design rule was
@@ -454,13 +459,12 @@ Run one cert type at a time. The generator is idempotent at the path level — r
 - **Verify:**
 
   ```bash
-  EVENT="$(uv run python -c 'from participation_certificate import conf; print(conf.event_short_name)')"
-  EXPECTED="$(uv run python -c "
+    EXPECTED="$(uv run python -c "
   import json
   from participation_certificate import conf
   print(sum(len(s['Proposal IDs']) for s in json.load(open('_data/' + conf.speaker.speakers_json))))
   ")"
-  ACTUAL="$(ls "_certificates/${EVENT}/speakers/records" | wc -l | tr -d ' ')"
+  ACTUAL="$(ls "projects/${CERTIFICATE_PROJECT_SLUG}/_certificates/speakers/records" | wc -l | tr -d ' ')"
   echo "expected ${EXPECTED} certs, produced ${ACTUAL}"
   test "${ACTUAL}" -eq "${EXPECTED}"
   ```
@@ -510,8 +514,7 @@ Run one cert type at a time. The generator is idempotent at the path level — r
 - **Verify:**
 
   ```bash
-  EVENT="$(uv run python -c 'from participation_certificate import conf; print(conf.event_short_name)')"
-  PREVIEW="_certificates/${EVENT}/attendees/email-preview"
+    PREVIEW="projects/${CERTIFICATE_PROJECT_SLUG}/_certificates/attendees/email-preview"
   ls "${PREVIEW}"/*.html | wc -l                       # one HTML per job
   ls "${PREVIEW}"/send-preview-*.xlsx | tail -1        # latest xlsx
   # Any leftover ${var} placeholder would indicate a template-renderer bug:
@@ -542,8 +545,7 @@ This step exercises the real Mailgun call with real cert content, but redirects 
 - **Verify (records are not modified):**
 
   ```bash
-  EVENT="$(uv run python -c 'from participation_certificate import conf; print(conf.event_short_name)')"
-  # All mail_status fields must remain null after a smoke send.
+    # All mail_status fields must remain null after a smoke send.
   uv run python -c "
   import glob, json
   from participation_certificate import conf
@@ -586,8 +588,7 @@ This step exercises the real Mailgun call with real cert content, but redirects 
 - **Verify:**
 
   ```bash
-  EVENT="$(uv run python -c 'from participation_certificate import conf; print(conf.event_short_name)')"
-  uv run python -c "
+    uv run python -c "
   import collections, glob, json
   from participation_certificate import conf
   paths = glob.glob(f'_certificates/{conf.event_short_name}/attendees/records/*.json')
@@ -607,12 +608,12 @@ This step exercises the real Mailgun call with real cert content, but redirects 
 
 | Artefact | Path | Written by | Lifetime / re-run behaviour |
 | --- | --- | --- | --- |
-| Per-record state | `_certificates/${EVENT}/${TYPE_DIR}/records/${UUID}.json` — keys `mail_status`, `mail_message_id`, `mail_sent_at`, `mail_failed_at`, `mail_last_error` | `deliver_certificates._persist_status` | Permanent; merged on each successful or failed send; **idempotent retry reads from here** |
-| Batch index | `_certificates/${EVENT}/${TYPE_DIR}/email-preview/send-preview-${UTC}.xlsx` — columns `uuid, email, delivered_to, name, subject, status, mail_message_id, preview_html` | `deliver_certificates.write_previews` | One file per CLI invocation; never overwritten |
-| Rendered HTML | `_certificates/${EVENT}/${TYPE_DIR}/email-preview/${UUID}.html` | Same | Overwritten on each render |
-| Rendered text | `_certificates/${EVENT}/${TYPE_DIR}/email-preview/${UUID}.txt` | Same | Overwritten on each render |
-| Signed PDF | `_certificates/${EVENT}/${TYPE_DIR}/upload-to-certificates/${UUID}/${UUID}.pdf` | `Certificates._generate_with_pdf_background` | Permanent until regenerated |
-| Validation Lektor page (attendees) | `_certificates/${EVENT}/attendees/website-validate/${UUID}/contents.lr` + PyCon website checkout | `write_validation_page` + `validation_upload.sync_attendee_validation` | Permanent |
+| Per-record state | `projects/${CERTIFICATE_PROJECT_SLUG}/_certificates/${TYPE_DIR}/records/${UUID}.json` — keys `mail_status`, `mail_message_id`, `mail_sent_at`, `mail_failed_at`, `mail_last_error` | `deliver_certificates._persist_status` | Permanent; merged on each successful or failed send; **idempotent retry reads from here** |
+| Batch index | `projects/${CERTIFICATE_PROJECT_SLUG}/_certificates/${TYPE_DIR}/email-preview/send-preview-${UTC}.xlsx` — columns `uuid, email, delivered_to, name, subject, status, mail_message_id, preview_html` | `deliver_certificates.write_previews` | One file per CLI invocation; never overwritten |
+| Rendered HTML | `projects/${CERTIFICATE_PROJECT_SLUG}/_certificates/${TYPE_DIR}/email-preview/${UUID}.html` | Same | Overwritten on each render |
+| Rendered text | `projects/${CERTIFICATE_PROJECT_SLUG}/_certificates/${TYPE_DIR}/email-preview/${UUID}.txt` | Same | Overwritten on each render |
+| Signed PDF | `projects/${CERTIFICATE_PROJECT_SLUG}/_certificates/${TYPE_DIR}/upload-to-certificates/${UUID}/${UUID}.pdf` | `Certificates._generate_with_pdf_background` | Permanent until regenerated |
+| Validation Lektor page (attendees) | `projects/${CERTIFICATE_PROJECT_SLUG}/_certificates/attendees/website-validate/${UUID}/contents.lr` + PyCon website checkout | `write_validation_page` + `validation_upload.sync_attendee_validation` | Permanent |
 | Console log | structlog stdout from each CLI run | structlog default handler | Ephemeral — pipe to a file if you want a transcript |
 | Mailgun delivery log | Mailgun dashboard (Sending → Logs) | Mailgun | 3 days (free tier) / 30 days (paid) |
 
@@ -625,7 +626,6 @@ This step exercises the real Mailgun call with real cert content, but redirects 
 ### Quick stats after a send
 
 ```bash
-EVENT="$(uv run python -c 'from participation_certificate import conf; print(conf.event_short_name)')"
 uv run python -c "
 import collections, glob, json
 from participation_certificate import conf
@@ -667,11 +667,11 @@ When a recipient asks for a name correction (typo, married name, nickname that c
 
   # 1. Replace the PDF on S3 (same key — overwrites)
   aws s3 cp \
-    _certificates/${EVENT}/<type>/upload-to-certificates/${UUID}/${UUID}.pdf \
+    projects/${CERTIFICATE_PROJECT_SLUG}/_certificates/<type>/upload-to-certificates/${UUID}/${UUID}.pdf \
     s3://your-bucket/your-conference/${UUID}/${UUID}.pdf
 
   # 2. (attendee only) Push the new validation page to the PyCon website checkout
-  cp _certificates/${EVENT}/attendees/website-validate/${UUID}/contents.lr \
+  cp projects/${CERTIFICATE_PROJECT_SLUG}/_certificates/attendees/website-validate/${UUID}/contents.lr \
     <WEBSITE>/content/attendee-certificate/${UUID}/contents.lr
   (cd <WEBSITE> && git add -f content/attendee-certificate/${UUID}/contents.lr \
     && git commit -m "reissue ${UUID}" && git push)
