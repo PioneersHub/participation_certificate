@@ -1,138 +1,366 @@
+"""Deliver certificate PDFs via Mailgun with branded HTML emails.
+
+Multi-step flow (intentional, mirroring conference_ticket_distribute/send_emails.py):
+
+  1. `--dry-run` writes per-recipient `.html`/`.txt` previews under
+     `_certificates/<event>/<type>/email-preview/` plus a `send-preview-<UTC>.xlsx`
+     index. The operator opens the HTML files in a browser to sanity-check
+     branding, copy and links before sending anything.
+  2. `--override-recipient <email>` performs a real send through Mailgun but
+     redirects every message to one test inbox. Real cert content, real PDF,
+     real branding — only the To: address flips. **No state is persisted**, so
+     a subsequent real run still picks the records up via idempotent retry.
+  3. A real run (no `--dry-run`, no `--override-recipient`) sends each email
+     via Mailgun, attaches the signed PDF, inlines the brand logo as a CID
+     image, and persists `mail_status` / `mail_message_id` / `mail_sent_at`
+     back into the `records/<uuid>.json` file. Re-runs are idempotent —
+     records with `mail_status == "sent"` are skipped unless `--only` is supplied.
+
+CLI:
+
+    uv run python participation_certificate/deliver_certificates.py \\
+        --type {attendee|masterclass|speaker} \\
+        [--dry-run | --override-recipient <email>] \\
+        [--only <uuid> [--only <uuid>...]] [--limit N] [--bcc <addr>]
+"""
+
+from __future__ import annotations
+
 import argparse
 import json
-import shutil
+from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 
-from pydantic import BaseModel
-from pytanis.helpdesk import Mail, Recipient
+from openpyxl import Workbook
 
 from participation_certificate import conf, logger
-from participation_certificate.email_providers import get_email_provider
+from participation_certificate.email_renderer import RenderedEmail, render_email
 from participation_certificate.generate_certificates import type_subdir
+from participation_certificate.mailgun import MailgunClient, MailgunSendError
 from participation_certificate.models.attendee import Attendee
 
-
-def _type_conf(cert_type: str):
-    return conf if cert_type == "attendee" else (conf.get(cert_type) or {})
+CERT_TYPES = ("attendee", "masterclass", "speaker")
 
 
-def _share_url(attendee: Attendee, cert_type: str) -> str:
-    """Public share URL — share_hash-keyed, never UUID-keyed."""
-    tc = _type_conf(cert_type)
-    base = (tc.get("share_url") if cert_type != "attendee" else None) or conf.get("share_url") or ""
-    return f"{base.rstrip('/')}/{attendee.share_hash}/" if base else ""
-
-
-def _email_section(cert_type: str) -> dict:
-    """Per-type email section. Falls back to the top-level `email` block."""
-    tc = _type_conf(cert_type)
-    if cert_type != "attendee":
-        per_type = tc.get("email") if tc else None
-        if per_type:
-            return per_type
-    return conf.email
-
-
-def message(attendee: Attendee, cert_type: str = "attendee") -> str:
-    """Render the delivery email from the cert type's `email.body_template`."""
-    email_conf = _email_section(cert_type)
-    template = email_conf.get("body_template") or ""
-    share_line_tpl = email_conf.get("share_line") or ""
-    share_url = _share_url(attendee, cert_type)
-    share_block = (
-        f"\n{share_line_tpl.format(share_url=share_url, event_full_name=conf.event_full_name)}\n"
-        if share_url and share_line_tpl
-        else ""
-    )
-    return template.format(
-        first_name=attendee.first_name,
-        event_full_name=conf.event_full_name,
-        certificates_url=conf.certificates_url,
-        uuid=attendee.uuid,
-        share_block=share_block,
-        # Type-specific placeholders — None for the type that doesn't carry them.
-        masterclass=attendee.masterclass or "",
-        talk_title=attendee.talk_title or "",
-    )
-
-
-class Job(BaseModel):
+@dataclass
+class Job:
+    record_path: Path
     attendee: Attendee
-    file: Path
-    cert_type: str = "attendee"
+    pdf_path: Path
+    rendered: RenderedEmail
 
 
-def collect_certificates(cert_type: str = "attendee") -> list[Job]:
-    event_root = conf.dirs.path_to_certificates / conf.event_short_name
-    type_root = event_root / type_subdir(cert_type)
-    records_dir = type_root / "records"
-    pdf_root = type_root / "upload-to-certificates"
-    upload_mirror = (
-        conf.dirs.path_to_certificates / f"{conf.event_short_name}-{type_subdir(cert_type)}_upload"
-    )
-    upload_mirror.mkdir(exist_ok=True, parents=True)
+# ---------------------------------------------------------------------------
+# Job loading
+# ---------------------------------------------------------------------------
+
+
+def _type_root(cert_type: str) -> Path:
+    return Path(conf.dirs.path_to_certificates) / conf.event_short_name / type_subdir(cert_type)
+
+
+def _records_dir(cert_type: str) -> Path:
+    return _type_root(cert_type) / "records"
+
+
+def _pdf_path(cert_type: str, attendee: Attendee) -> Path:
+    assert attendee.uuid
+    return _type_root(cert_type) / "upload-to-certificates" / attendee.uuid / f"{attendee.uuid}.pdf"
+
+
+def _preview_dir(cert_type: str) -> Path:
+    return _type_root(cert_type) / "email-preview"
+
+
+def load_jobs(
+    cert_type: str,
+    *,
+    only: set[str] | None = None,
+    limit: int | None = None,
+) -> tuple[list[Job], list[str]]:
+    """Walk records/*.json for `cert_type` and assemble Job entries.
+
+    Returns (jobs, skipped_messages). `skipped_messages` captures records that
+    were filtered out (already sent, missing PDF, --only mismatch).
+    """
+    records_dir = _records_dir(cert_type)
+    if not records_dir.exists():
+        raise FileNotFoundError(f"No records dir at {records_dir}")
 
     jobs: list[Job] = []
-    for record in sorted(records_dir.glob("*.json")):
-        attendee = Attendee(**json.loads(record.read_text()))
-        pdf = pdf_root / attendee.uuid / f"{attendee.uuid}.pdf"
-        if not pdf.exists():
-            logger.warning(f"[{cert_type}] PDF missing for {attendee.uuid}: {pdf}")
+    skipped: list[str] = []
+    for record_path in sorted(records_dir.glob("*.json")):
+        attendee = Attendee(**json.loads(record_path.read_text(encoding="utf-8")))
+        if only is not None and attendee.uuid not in only:
             continue
-        logger.info(f"[{cert_type}] Processing {attendee.uuid}")
-        dst = upload_mirror / f"{attendee.uuid}.pdf"
-        if not dst.exists():
-            shutil.copy(pdf, dst)
-        jobs.append(Job(attendee=attendee, file=pdf, cert_type=cert_type))
-    return jobs
-
-
-def send_certificates(jobs: list[Job], dry_run: bool = False) -> None:
-    provider_name = conf.email.provider
-    provider_config = conf.email.get(provider_name, {})
-    try:
-        email_provider = get_email_provider(provider_name, provider_config)
-    except Exception as e:
-        logger.error(f"Failed to initialize email provider: {e}")
-        return
-
-    logger.info(f"Using {provider_name} email provider to send {len(jobs)} certificates")
-
-    for i, job in enumerate(jobs, 1):
-        recipients = [
-            Recipient(
-                name=job.attendee.full_name,
-                email=job.attendee.email,
-                address_as=job.attendee.first_name,
-            )
-        ]
-        mail = Mail(
-            subject=f"Certificate of Attendance: {conf.event_full_name}",
-            text=message(attendee=job.attendee, cert_type=job.cert_type),
-            recipients=recipients,
-            team_id=None,
-            agent_id=None,
+        if only is None and attendee.mail_status == "sent":
+            skipped.append(f"{attendee.uuid} already sent ({attendee.mail_sent_at})")
+            continue
+        pdf = _pdf_path(cert_type, attendee)
+        if not pdf.exists():
+            skipped.append(f"{attendee.uuid} skipped: PDF missing at {pdf}")
+            continue
+        rendered = render_email(cert_type, attendee)
+        jobs.append(
+            Job(record_path=record_path, attendee=attendee, pdf_path=pdf, rendered=rendered)
         )
-        if provider_name == "helpdesk" and conf.email.helpdesk.get("team_id"):
-            mail.team_id = conf.email.helpdesk.team_id
+        if limit and len(jobs) >= limit:
+            break
+    return jobs, skipped
 
-        logger.info(f"Sending {i}/{len(jobs)} ({job.cert_type}) to {job.attendee.email}")
-        responses, errors = email_provider.send(mail, dry_run=dry_run)
-        if errors:
-            logger.error(f"Error sending mail to {job.attendee.email}: {errors}")
+
+# ---------------------------------------------------------------------------
+# Preview output
+# ---------------------------------------------------------------------------
+
+
+def write_previews(
+    cert_type: str,
+    jobs: list[Job],
+    skipped: list[str],
+    *,
+    override_recipient: str | None = None,
+) -> Path:
+    """Write per-recipient HTML/TXT previews + a send-preview-<UTC>.xlsx index.
+
+    The xlsx has a `delivered_to` column: for normal runs it equals the
+    attendee's real email; for smoke runs (``override_recipient`` set) it shows
+    the override address so the operator can audit which rows were redirected.
+
+    Returns the path to the xlsx file.
+    """
+    preview_dir = _preview_dir(cert_type)
+    preview_dir.mkdir(parents=True, exist_ok=True)
+
+    stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+    xlsx_path = preview_dir / f"send-preview-{stamp}.xlsx"
+
+    wb = Workbook()
+    sheet = wb.active
+    sheet.title = "preview"
+    sheet.append(
+        [
+            "uuid",
+            "email",
+            "delivered_to",
+            "name",
+            "subject",
+            "status",
+            "mail_message_id",
+            "preview_html",
+        ]
+    )
+
+    for job in jobs:
+        a = job.attendee
+        html_path = preview_dir / f"{a.uuid}.html"
+        txt_path = preview_dir / f"{a.uuid}.txt"
+        html_path.write_text(job.rendered.html, encoding="utf-8")
+        txt_path.write_text(job.rendered.text, encoding="utf-8")
+        sheet.append(
+            [
+                a.uuid,
+                a.email,
+                override_recipient or a.email,
+                a.full_name,
+                job.rendered.subject,
+                a.mail_status or "pending",
+                a.mail_message_id or "",
+                str(html_path),
+            ]
+        )
+
+    if skipped:
+        sheet2 = wb.create_sheet("skipped")
+        sheet2.append(["reason"])
+        for msg in skipped:
+            sheet2.append([msg])
+
+    wb.save(xlsx_path)
+    return xlsx_path
+
+
+# ---------------------------------------------------------------------------
+# Sending
+# ---------------------------------------------------------------------------
+
+
+def _persist_status(job: Job, **updates: str | None) -> None:
+    """Merge `updates` into the on-disk record JSON and the attendee model.
+
+    Re-loads the existing JSON so any other fields persisted earlier (e.g. by a
+    previous failed run) survive untouched.
+    """
+    data = json.loads(job.record_path.read_text(encoding="utf-8"))
+    for key, value in updates.items():
+        data[key] = value
+        setattr(job.attendee, key, value)
+    job.record_path.write_text(json.dumps(data, indent=4, ensure_ascii=False), encoding="utf-8")
+
+
+def _logo_path() -> Path:
+    branding = conf.get("branding") or {}
+    raw = branding.get("logo_path") or "assets/email/pyconde-pydata-2026-logo.png"
+    p = Path(raw)
+    if not p.is_absolute():
+        p = Path(__file__).parents[1] / p
+    if not p.exists():
+        raise FileNotFoundError(
+            f"Branding logo not found at {p}. Copy the chosen logo into place "
+            "(see assets/email/README.md)."
+        )
+    return p
+
+
+def send_jobs(
+    jobs: list[Job],
+    *,
+    cert_type: str,
+    bcc: str | None,
+    override_recipient: str | None = None,
+) -> tuple[int, int]:
+    """Send each job via Mailgun. Returns (sent, failed).
+
+    When ``override_recipient`` is set, every email is redirected to that single
+    address regardless of the attendee's real email — useful for a smoke test
+    that exercises the real Mailgun call with real cert content. **No state is
+    persisted to `records/<uuid>.json` in smoke mode**, so the subsequent real
+    send still picks the record up via idempotent retry.
+    """
+    if not jobs:
+        return 0, 0
+
+    smoke = override_recipient is not None
+    logo = _logo_path()
+    sent = failed = 0
+    with MailgunClient.from_config() as client:
+        for i, job in enumerate(jobs, 1):
+            a = job.attendee
+            if smoke:
+                assert override_recipient is not None  # narrowed by `smoke` flag
+                logger.info(
+                    f"[{cert_type}] [smoke] {i}/{len(jobs)} redirect {a.email} -> "
+                    f"{override_recipient} (uuid={a.uuid})"
+                )
+                to_addr = override_recipient
+                to_name = "Smoke test"
+            else:
+                logger.info(f"[{cert_type}] sending {i}/{len(jobs)} to {a.email} (uuid={a.uuid})")
+                to_addr = a.email
+                to_name = a.full_name
+            try:
+                message_id = client.send_message(
+                    to=to_addr,
+                    recipient_name=to_name,
+                    subject=job.rendered.subject,
+                    text=job.rendered.text,
+                    html=job.rendered.html,
+                    attachments=[job.pdf_path],
+                    inlines=[logo],
+                    bcc=bcc,
+                )
+            except MailgunSendError as exc:
+                logger.error(f"[{cert_type}] {a.uuid} send failed: {exc}")
+                if not smoke:
+                    _persist_status(
+                        job,
+                        mail_status="failed",
+                        mail_failed_at=datetime.now(UTC).isoformat(),
+                        mail_last_error=str(exc),
+                    )
+                failed += 1
+                continue
+            if not smoke:
+                _persist_status(
+                    job,
+                    mail_status="sent",
+                    mail_message_id=message_id,
+                    mail_sent_at=datetime.now(UTC).isoformat(),
+                    mail_last_error=None,
+                )
+            sent += 1
+    return sent, failed
+
+
+# ---------------------------------------------------------------------------
+# CLI
+# ---------------------------------------------------------------------------
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Deliver certificates for one type.")
+    parser = argparse.ArgumentParser(description="Send branded certificate emails via Mailgun.")
     parser.add_argument(
         "--type",
-        choices=("attendee", "masterclass", "speaker"),
+        choices=CERT_TYPES,
         default="attendee",
+        help="Cert type to deliver (default: attendee).",
     )
-    parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Render previews + xlsx index only; do not send.",
+    )
+    parser.add_argument(
+        "--only",
+        action="append",
+        default=[],
+        help="Restrict to one or more UUIDs (repeatable). Overrides the skip-already-sent filter.",
+    )
+    parser.add_argument(
+        "--limit",
+        type=int,
+        default=None,
+        help="Process at most N records.",
+    )
+    parser.add_argument(
+        "--bcc",
+        default=None,
+        help="BCC every sent message to this address (defaults to conf.email.bcc).",
+    )
+    parser.add_argument(
+        "--override-recipient",
+        default=None,
+        help=(
+            "Smoke test: send every email (real content, real PDF) to this address "
+            "instead of the attendee's. records/<uuid>.json is NOT modified, so a "
+            "later real send is unaffected. Combine with --limit N to keep the batch small."
+        ),
+    )
     args = parser.parse_args()
-    jobs = collect_certificates(args.type)
-    send_certificates(jobs, dry_run=args.dry_run)
+
+    if args.override_recipient and "@" not in args.override_recipient:
+        parser.error(
+            f"--override-recipient does not look like an email: {args.override_recipient!r}"
+        )
+    if args.override_recipient and args.dry_run:
+        parser.error("--override-recipient + --dry-run is meaningless (nothing is sent); pick one.")
+
+    only = set(args.only) or None
+    bcc = args.bcc or ((conf.get("email") or {}).get("bcc") or None)
+
+    logger.info(f"[{args.type}] loading records from {_records_dir(args.type)}")
+    jobs, skipped = load_jobs(args.type, only=only, limit=args.limit)
+    logger.info(f"[{args.type}] {len(jobs)} job(s) ready; {len(skipped)} skipped")
+
+    xlsx = write_previews(args.type, jobs, skipped, override_recipient=args.override_recipient)
+    logger.info(f"[{args.type}] preview index: {xlsx}")
+
+    if args.dry_run:
+        logger.info(f"[{args.type}] dry-run — not sending. Open the HTML previews to review.")
+        return
+
+    sent, failed = send_jobs(
+        jobs,
+        cert_type=args.type,
+        bcc=bcc,
+        override_recipient=args.override_recipient,
+    )
+    mode = f"smoke→{args.override_recipient}" if args.override_recipient else "live"
+    logger.info(
+        f"[{args.type}] done ({mode}) — seen={len(jobs) + len(skipped)} sent={sent} "
+        f"failed={failed} skipped={len(skipped)} preview={xlsx}"
+    )
 
 
 if __name__ == "__main__":

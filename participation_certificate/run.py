@@ -30,10 +30,15 @@ def _load_signing() -> tuple[Path | None, bytes | None]:
 
 
 def _batch_size_for(cert_type: str) -> int:
-    """Per-type batch_size override; falls back to the top-level batch_size."""
+    """Per-type batch_size override; falls back to the top-level batch_size.
+
+    A value of ``0`` (at either level) means "no limit, process everything".
+    Use ``is not None`` so an explicit ``0`` at the per-type level overrides a
+    non-zero top-level value, rather than falling through.
+    """
     if cert_type != "attendee":
         per_type = (conf.get(cert_type) or {}).get("batch_size")
-        if per_type:
+        if per_type is not None:
             return per_type
     return conf.batch_size or 0
 
@@ -92,7 +97,23 @@ def run_masterclass() -> None:
         sys.exit("masterclass.enabled is false — nothing to do.")
     table = Path(__file__).parents[1] / conf.dirs.data_dir / cfg["attendees_table"]
     load_columns = dict(cfg["load_columns"])
-    participants = ProcessAttendees(table, load_columns)
+
+    def select_rows(data_frame: pd.DataFrame) -> pd.DataFrame:
+        """Compose ticket_reference from Order code + Product.
+
+        Pretix Order codes are per-order, not per-enrollment, so one order
+        containing two half-day masterclasses produces two rows that share an
+        Order code. Mixing the Product into the ticket_reference keeps the two
+        enrollments distinct in the UUID hash + dedupe key.
+        """
+        data_frame["ticket_reference"] = (
+            data_frame["ticket_reference"].astype(str).str.strip()
+            + " "
+            + data_frame["masterclass"].astype(str).str.strip()
+        )
+        return data_frame
+
+    participants = ProcessAttendees(table, load_columns, select_rows)
     _generate("masterclass", participants.attendees)
 
 
@@ -100,8 +121,9 @@ def run_speaker() -> None:
     cfg = conf.get("speaker")
     if not cfg or not cfg.get("enabled"):
         sys.exit("speaker.enabled is false — nothing to do.")
-    source = Path(__file__).parents[1] / conf.dirs.data_dir / cfg["speakers_json"]
-    participants = ProcessSpeakers(source)
+    sessions_path = Path(__file__).parents[1] / conf.dirs.data_dir / cfg["sessions_json"]
+    speakers_path = Path(__file__).parents[1] / conf.dirs.data_dir / cfg["speakers_json"]
+    participants = ProcessSpeakers(sessions_path, speakers_path)
     _generate("speaker", participants.attendees)
 
 

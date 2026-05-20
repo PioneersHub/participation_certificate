@@ -1,3 +1,20 @@
+"""Build Attendee records for speaker certificates.
+
+Two source files are required, both under `_data/`:
+
+  * `<sessions_json>` — confirmed sessions only (the source of truth for which
+    certs to emit). Schema per item:
+        {"ID", "Proposal title", "Session type": {"en": ...},
+         "Speaker IDs": [...], "Speaker names": [...]}
+  * `<speakers_json>` — speaker contact details. Schema per item:
+        {"ID", "Name", "Email", ...}
+
+One Attendee is emitted per `(speaker, confirmed-session)` pair, so a speaker
+who gives N confirmed sessions gets N certs. The matching email comes from the
+speakers file (joined on the speaker ID). Sessions that reference a speaker
+whose email is missing in the speakers file produce a warning and are skipped.
+"""
+
 import json
 from pathlib import Path
 
@@ -6,40 +23,55 @@ from participation_certificate.models.attendee import Attendee
 
 
 class ProcessSpeakers:
-    """Load the speakers JSON and flatten each (speaker, proposal) into an Attendee.
+    """Flatten the confirmed-sessions list into per-(speaker, session) Attendees."""
 
-    The source is a list of speaker objects with fields:
-        ID, Name, Email, Proposal IDs (list), Proposal titles (list)
-
-    A speaker with N proposals produces N Attendee records — one cert per talk.
-    """
-
-    def __init__(self, source_path: Path):
-        self.source_path = source_path
+    def __init__(self, sessions_path: Path, speakers_path: Path):
+        self.sessions_path = sessions_path
+        self.speakers_path = speakers_path
         self.attendees: list[Attendee] = self._load()
 
     def _load(self) -> list[Attendee]:
-        data = json.loads(self.source_path.read_text(encoding="utf-8"))
-        logger.info(f"Loaded {len(data)} speakers from {self.source_path}")
+        speakers = json.loads(self.speakers_path.read_text(encoding="utf-8"))
+        email_by_id = {
+            (s.get("ID") or "").strip(): (s.get("Email") or "").strip()
+            for s in speakers
+            if s.get("ID")
+        }
+        logger.info(
+            f"Loaded {len(speakers)} speakers from {self.speakers_path} "
+            f"({sum(1 for v in email_by_id.values() if v)} with email)."
+        )
+
+        sessions = json.loads(self.sessions_path.read_text(encoding="utf-8"))
+        logger.info(f"Loaded {len(sessions)} confirmed sessions from {self.sessions_path}")
 
         attendees: list[Attendee] = []
-        for speaker in data:
-            full_name = (speaker.get("Name") or "").strip()
-            first_name = full_name.split()[0] if full_name else ""
-            email = speaker.get("Email") or ""
-            speaker_id = speaker.get("ID") or ""
-            proposal_ids = speaker.get("Proposal IDs") or []
-            proposal_titles = speaker.get("Proposal titles") or []
+        for session in sessions:
+            proposal_id = (session.get("ID") or "").strip()
+            proposal_title = (session.get("Proposal title") or "").strip()
+            speaker_ids = session.get("Speaker IDs") or []
+            speaker_names = session.get("Speaker names") or []
 
-            if not (full_name and email and speaker_id and proposal_ids):
-                logger.warning(f"Skipping incomplete speaker record: {speaker}")
+            if not (proposal_id and proposal_title and speaker_ids):
+                logger.warning(f"Skipping incomplete session: {session}")
                 continue
 
-            for proposal_id, proposal_title in zip(proposal_ids, proposal_titles, strict=False):
+            for sid_raw, sname_raw in zip(speaker_ids, speaker_names, strict=False):
+                speaker_id = (sid_raw or "").strip()
+                speaker_name = (sname_raw or "").strip()
+                email = email_by_id.get(speaker_id, "")
+                if not (speaker_id and speaker_name and email):
+                    logger.warning(
+                        f"Session {proposal_id} ({proposal_title[:40]}…): cannot resolve "
+                        f"speaker_id={speaker_id!r} name={speaker_name!r} email={email!r}"
+                    )
+                    continue
+
+                first_name = speaker_name.split()[0]
                 try:
                     attendees.append(
                         Attendee(
-                            full_name=full_name,
+                            full_name=speaker_name,
                             first_name=first_name,
                             email=email,
                             ticket_reference=proposal_id,
@@ -50,7 +82,7 @@ class ProcessSpeakers:
                     )
                 except Exception as e:  # noqa: BLE001
                     logger.error(
-                        f"Error creating speaker Attendee {full_name} ({proposal_id}): {e}"
+                        f"Error creating speaker Attendee {speaker_name} ({proposal_id}): {e}"
                     )
 
         logger.info(f"Produced {len(attendees)} speaker certificate records.")

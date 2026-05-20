@@ -1,7 +1,8 @@
 import base64
 import hashlib
+from typing import Literal
 
-from pydantic import UUID4, BaseModel, EmailStr
+from pydantic import UUID4, BaseModel, ConfigDict, EmailStr
 
 
 class UUID(BaseModel):
@@ -20,7 +21,13 @@ class Attendee(UUID):
     The `hash` is created automatically from `full_name` & `ticket_reference`. It can be used as serial number on
      the certificates and to distinguish people with the same name.
     The `uuid` is created automatically and is used as a unique identifier of the certificate.
+
+    `mail_*` fields are populated by `deliver_certificates.py` after each send;
+    re-runs skip records with `mail_status == "sent"`.
     """
+
+    # Tolerate legacy `share_hash` (and similar) keys when loading older records.
+    model_config = ConfigDict(extra="ignore")
 
     full_name: str
     first_name: str
@@ -35,7 +42,11 @@ class Attendee(UUID):
     speaker_id: str | None = None
     proposal_id: str | None = None
     hash: str | None = None
-    share_hash: str | None = None
+    mail_status: Literal["pending", "sent", "failed"] | None = None
+    mail_message_id: str | None = None
+    mail_sent_at: str | None = None
+    mail_failed_at: str | None = None
+    mail_last_error: str | None = None
 
     def model_post_init(self, ctx):  # noqa: ARG002
         # short hash to identify the attendee
@@ -52,11 +63,3 @@ class Attendee(UUID):
         # stable uuid for webservice, this uuid will always be the same for the same attendee
         # allows reruns without cleanup
         self.uuid = str(UUID4(hsh.hexdigest()[:32]))
-        # public-share identifier: hash(hash). Deterministic, one-way; the share URL never
-        # exposes the uuid (which is reserved for the PDF and email).
-        # Encode the raw digest bytes (NOT the hex string): b64-of-hex has far reduced
-        # entropy because each "byte" is just an ascii hex char, which produces frequent
-        # collisions at 6 chars (observed ~1% across 2k attendees in test runs).
-        hsh2 = hashlib.sha512()
-        hsh2.update(self.hash.encode("utf-8"))
-        self.share_hash = base64.urlsafe_b64encode(hsh2.digest())[:6].decode("utf-8").upper()

@@ -9,14 +9,12 @@ event_short_name: ""
 event_full_name: ""
 # url to download certificates
 certificates_url: ""
-# local path to write static validation pages (for static site generators like Lektor)
+# Local path to the PyCon DE website checkout; attendee validation pages
+# (`<uuid>/contents.lr`) are synced here by validation_upload.py.
 static_pages_website: ""
-# public URL for validation links in PDFs (optional, defaults to static_pages_website if not set)
+# Public URL prefix for the validation link printed on the PDF.
+# Pattern: {validation_url}{uuid}/  e.g. https://2026.pycon.de/attendee-certificate/<uuid>/
 validation_url: ""
-# public base URL for the social-share page (UUID-free; uses share_hash)
-share_url: ""
-# local Lektor path for share pages (sibling/separate from static_pages_website)
-share_pages_website: ""
 # Attendee data file, relative to dirs.data_dir. CSV (.csv) or Excel (.xlsx).
 attendees_table: ""
 # Process only the first N attendees (useful for testing). 0 = process all.
@@ -44,17 +42,15 @@ masterclass:
   pdf_background:
     file: ""                  # under dirs.graphics
   text_items: []
-  # Per-type Lektor destinations; if empty, falls back to top-level ones.
-  static_pages_website: ""
-  share_pages_website: ""
-  share_url: ""
-  email:
-    body_template: ""
-    share_line: ""
 
 speaker:
   enabled: false
-  # JSON under dirs.data_dir (list of speakers with Proposal IDs / Proposal titles).
+  # JSON under dirs.data_dir — confirmed sessions only (the source of truth
+  # for which speaker certs to emit). Schema per item:
+  #   {ID, "Proposal title", "Session type": {en}, "Speaker IDs", "Speaker names"}
+  sessions_json: ""
+  # JSON under dirs.data_dir — speaker directory used to resolve each Speaker ID
+  # to an email. Schema per item: {ID, Name, Email, ...}
   speakers_json: ""
   pdf_background:
     file: ""
@@ -62,26 +58,6 @@ speaker:
   # URL templates resolved with {attendee.speaker_id} / {attendee.proposal_id}.
   speaker_url_template: ""
   talk_url_template: ""
-  static_pages_website: ""
-  share_pages_website: ""
-  share_url: ""
-  email:
-    body_template: ""
-    share_line: ""
-# ########################################
-# SOCIAL SHARING
-# ########################################
-# Where the social-share image links to when clicked on the validation page.
-# Per-platform share text templates are rendered with {event_full_name} and {share_url}.
-social:
-  click_through_url: ""
-  share_text:
-    default: ""
-    linkedin: ""
-    x: ""
-    mastodon: ""
-    whatsapp: ""
-    telegram: ""
 # ########################################
 # DIRECTORIES
 # ########################################
@@ -221,32 +197,69 @@ metadata:
   author: "Author"
   keywords: "A, B, C"
 # ########################################
-# EMAIL CONFIGURATION
+# EMAIL DELIVERY (Mailgun)
 # ########################################
+# All editable email copy lives under `email:` here (or, populated per event,
+# in config_local.yaml). The renderer drops these fields into a shared layout
+# at `participation_certificate/email_templates/layout.{html,txt}`.
+#
+# Body fields accept lightweight markdown:
+#   **bold**, *italic*, [link text](url)
+# converted to HTML for the HTML email and stripped to readable prose for text.
+#
+# `string.Template` substitution; supported runtime variables:
+#   ${first_name}, ${full_name}, ${event_full_name}, ${event_short_name},
+#   ${certificates_url}, ${download_url}, ${uuid}, ${validation_url},
+#   ${talk_title}, ${talk_url}, ${speaker_url}, ${masterclass}
 email:
-  # Email provider to use: "helpdesk" or "brevo"
-  provider: "helpdesk"
+  # One-liner subject per cert type.
+  subjects:
+    attendee: ""
+    masterclass: ""
+    speaker: ""
+  # Body content is layered: `default` is the fallback for any field a cert
+  # type doesn't override. Effective body for a cert type = `{...default, ...<type>}`.
+  # Every field in `_REQUIRED_FIELDS` (see email_renderer.py) must be present
+  # after the merge — set to `""` in `default` if you want a field to render
+  # empty for types that don't override it.
+  body:
+    default:
+      greeting: ""        # e.g. "Dear ${first_name},"
+      intro: ""           # main cert-introduction paragraph
+      download_intro: ""  # one-liner above the CTA button
+      cta_label: ""       # button text (no markdown)
+      post_cta: ""        # paragraph(s) after the CTA — validation link etc.
+      closing: ""         # gratitude paragraph
+      signature: ""       # "All the best,"
+      sign_off: ""        # "The ${event_full_name} team"
+    attendee: {}          # override only what differs from default
+    masterclass: {}
+    speaker: {}
+  # Legal footer — shared by all cert types. Markdown allowed.
+  footer: ""
+  # Optional BCC for every delivered email (audit copy). Empty disables.
+  bcc: ""
 
-  # HelpDesk provider configuration
-  helpdesk:
-    team_id: ""
-    agent_id: ""  # Optional, will use account default if not provided
-    throttle_requests: 1
-    throttle_period: 10
+mailgun:
+  # Sending domain configured in Mailgun (e.g. "mg.pycon.de").
+  domain: ""
+  # "eu" → api.eu.mailgun.net, "us" → api.mailgun.net.
+  region: "eu"
+  # `${from_name} <${from_email}>` is the `From:` header.
+  from_name: ""
+  from_email: ""
+  # API key file path, relative to project root. One-line plaintext.
+  api_key_path: "_secret/mailgun_key"
+  # Max messages per second sent to Mailgun's REST API.
+  rate_limit_per_sec: 5
 
-  # Brevo provider configuration
-  brevo:
-    # API key or path to file containing API key
-    api_key: ""  # Or use api_key_path below
-    api_key_path: "_secret/brevo_key"  # Relative to project root
-    sender_name: "Your Event Name"
-    sender_email: "noreply@example.com"
-  # Body template; rendered with {first_name}, {event_full_name}, {certificates_url},
-  # {uuid}, {share_block}. {share_block} is replaced with the rendered share_line when a
-  # share_url is available, else empty.
-  body_template: ""
-  # One-liner injected into {share_block}; rendered with {share_url}.
-  share_line: ""
+# ########################################
+# BRANDING (HTML email)
+# ########################################
+branding:
+  # Path to the logo image, relative to project root. Sent as an inline (CID)
+  # attachment; HTML templates reference `<img src="cid:<filename>">`.
+  logo_path: "assets/email/pyconde-pydata-2026-logo.png"
 # ########################################
 # DIGITAL SIGNATURE
 # ########################################

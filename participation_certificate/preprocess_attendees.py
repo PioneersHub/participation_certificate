@@ -50,12 +50,17 @@ class ProcessAttendees:
         df = df.dropna(how="any")
         logger.info(f"Dropped any record with missing info: {len(df)} attendees in list.")
 
-        # avoid sending multiple certificates if people have multiple tickets, e.g., day tickets.
-        df["unique"] = df["full_name"] + df["email"]
+        # Dedupe key matches the UUID-derivation input (full_name + ticket_reference).
+        # For attendee, ticket_reference == email, so this is identical to a
+        # name+email dedupe. For masterclass, ticket_reference is a composite of
+        # Order code + Product, so a single person enrolled in two masterclasses
+        # under one order produces two distinct rows (and two distinct UUIDs).
+        df["unique"] = df["full_name"] + df["ticket_reference"]
         df = df.drop_duplicates(subset="unique")
         df = df.drop(columns=["unique"])
         logger.info(
-            f"Removed duplicates (same name, email combination): {len(df)} attendees in list."
+            f"Removed duplicates (same name, ticket_reference combination): "
+            f"{len(df)} attendees in list."
         )
 
         logger.info("Creating attendees list.")

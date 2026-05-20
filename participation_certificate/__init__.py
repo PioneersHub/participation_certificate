@@ -1,6 +1,7 @@
 __version__ = "0.9.0"
 
 import logging
+import sys
 from pathlib import Path
 
 import colorama
@@ -64,7 +65,9 @@ structlog.configure(
     ],
     wrapper_class=structlog.make_filtering_bound_logger(logging.DEBUG),
     context_class=dict,
-    logger_factory=structlog.PrintLoggerFactory(),
+    # Logs go to stderr so script-style `$(uv run python -c '...')` captures
+    # stay clean — stdout is reserved for the script's actual output.
+    logger_factory=structlog.PrintLoggerFactory(file=sys.stderr),
     cache_logger_on_first_use=False,
 )
 structlog.configure(processors=structlog.get_config()["processors"][:-1] + [cr])

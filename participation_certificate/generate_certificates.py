@@ -3,10 +3,11 @@ import json
 import re
 import secrets
 import sys
+import traceback
 from datetime import UTC, datetime
 from pathlib import Path
 
-import pypdfium2 as pdfium
+from cryptography.hazmat.primitives.serialization import pkcs12
 from endesive.pdf import cms
 from fpdf import FPDF, FPDF_VERSION
 from fpdf.enums import AccessPermission
@@ -123,49 +124,14 @@ def type_subdir(cert_type: str) -> str:
     return _TYPE_SUBDIR.get(cert_type, cert_type)
 
 
-def build_share_url(attendee: Attendee, cert_type: str = "attendee") -> str:
-    """Public share URL keyed by share_hash (UUID-free).
-
-    Each cert type can override `share_url` in its own config block; falls back
-    to the top-level `share_url`.
-    """
-    type_conf = _type_conf(cert_type)
-    base = (
-        (type_conf.get("share_url") if cert_type != "attendee" else None)
-        or conf.get("share_url")
-        or ""
-    )
-    return f"{base.rstrip('/')}/{attendee.share_hash}/" if base else ""
-
-
-def _build_share_texts(attendee: Attendee, cert_type: str = "attendee") -> dict[str, str]:
-    """Render per-platform share texts from `social.share_text` config.
-
-    Returns a dict keyed by platform name ("default", "linkedin", "x", ...).
-    Uses {event_full_name} and {share_url} placeholders. The {share_url} resolves
-    to the share-hash URL — never the UUID.
-    """
-    social = conf.get("social") or {}
-    templates = social.get("share_text") if social else None
-    if not templates:
-        return {}
-
-    share_url = build_share_url(attendee, cert_type)
-    rendered = {}
-    for platform, template in templates.items():
-        if template:
-            rendered[platform] = template.format(
-                event_full_name=conf.event_full_name,
-                share_url=share_url,
-                attendee=attendee,
-            )
-    return rendered
-
-
 def write_validation_page(
     attendee: Attendee, target_dir: Path, cert_type: str = "attendee"
 ) -> None:
-    """Write the slim Lektor `contents.lr` validation page (UUID-keyed, attendee-private)."""
+    """Write the slim Lektor `contents.lr` validation page (UUID-keyed, attendee-only).
+
+    Only attendee certs get a validation page — masterclass and speaker certs
+    are delivered solely by email, never published to the PyCon website.
+    """
     title = conf.get("validation_page_title") or "Certificate of Attendance Validation Service"
     blocks = [
         "_model: validate_certificate",
@@ -176,31 +142,6 @@ def write_validation_page(
         f"cert_type: {cert_type}",
         "_discoverable: no",
     ]
-    contents = "\n---\n".join(blocks) + "\n"
-    (target_dir / "contents.lr").write_text(contents, encoding="utf-8")
-
-
-def write_share_page(attendee: Attendee, target_dir: Path, cert_type: str = "attendee") -> None:
-    """Write the public share page Lektor `contents.lr` (share_hash-keyed, no UUID)."""
-    social = conf.get("social") or {}
-    click_through = social.get("click_through_url", "") if social else ""
-    share_url = build_share_url(attendee, cert_type)
-    share_texts = _build_share_texts(attendee, cert_type)
-
-    blocks = [
-        "_model: certificate_share",
-        "title: Certificate of Attendance",
-        f"full_name: {obfuscate_name(attendee.full_name)}",
-        f"conference: {conf.event_full_name}",
-        f"image: {attendee.share_hash}.png",
-        f"click_url: {click_through}",
-        f"share_url: {share_url}",
-        f"cert_type: {cert_type}",
-    ]
-    for platform, text in share_texts.items():
-        blocks.append(f"share_text_{platform}: {text}")
-    blocks.append("_discoverable: no")
-
     contents = "\n---\n".join(blocks) + "\n"
     (target_dir / "contents.lr").write_text(contents, encoding="utf-8")
 
@@ -268,10 +209,9 @@ class Certificates:
         return conf.get(self.cert_type) or {}
 
     # Output layout (under self.save_to):
-    #   upload-to-certificates/<uuid>/<uuid>.pdf   — PDFs ready for S3
-    #   records/<uuid>.json                        — attendee data, flat
-    #   website-validate/<uuid>/contents.lr        — Lektor validation pages
-    #   website-share/<share_hash>/{contents.lr, <share_hash>.png}  — Lektor share pages
+    #   upload-to-certificates/<uuid>/<uuid>.pdf   — signed PDF (emailed as attachment)
+    #   records/<uuid>.json                        — full Attendee dump + mail_status
+    #   website-validate/<uuid>/contents.lr        — Lektor validation page (attendee only)
     def _pdf_path(self, attendee):
         return self.save_to / "upload-to-certificates" / attendee.uuid / f"{attendee.uuid}.pdf"
 
@@ -280,9 +220,6 @@ class Certificates:
 
     def _validate_dir(self, attendee):
         return self.save_to / "website-validate" / attendee.uuid
-
-    def _share_dir(self, attendee):
-        return self.save_to / "website-share" / attendee.share_hash
 
     def generate_certificates(self):
         for i, attendee in enumerate(self.attendees):
@@ -320,13 +257,13 @@ class Certificates:
                 and bg.get("enabled", False)
                 and bg.get("file")
             ):
-                return Path(conf.dirs.graphics) / bg.file
+                return Path(conf.dirs.graphics) / bg["file"]
             return None
         # masterclass / speaker: background lives under the per-type block.
         type_conf = self._type_conf()
         bg = type_conf.get("pdf_background") if type_conf else None
         if bg and isinstance(bg, dict | DictConfig) and bg.get("file"):
-            return Path(conf.dirs.graphics) / bg.file
+            return Path(conf.dirs.graphics) / bg["file"]
         return None
 
     def _generate_with_colored_background(self, attendee):
@@ -404,12 +341,8 @@ class Certificates:
         if self.sign_key is not None:
             logger.info(f"Signing {attendee}...")
             try:
-                # Prepare signature metadata
-                from datetime import datetime
-
-                from cryptography.hazmat.primitives.serialization import pkcs12
-
-                date_str = datetime.utcnow().strftime("D:%Y%m%d%H%M%S+00'00'")
+                # Format as PDF signing date per PDF reference (D:YYYYMMDDHHmmSS+00'00').
+                date_str = datetime.now(UTC).strftime("D:%Y%m%d%H%M%S+00'00'")
 
                 signing_conf = conf.get("signing") or {}
                 signature_dict = {
@@ -445,8 +378,6 @@ class Certificates:
                 logger.debug(f"Successfully signed PDF for {attendee.full_name}")
 
             except Exception as e:
-                import traceback
-
                 logger.error(f"Failed to sign PDF for {attendee}: {e}")
                 logger.debug(f"Traceback: {traceback.format_exc()}")
                 # Fallback: save unsigned PDF
@@ -480,55 +411,17 @@ class Certificates:
         record_path.parent.mkdir(parents=True, exist_ok=True)
         json.dump(attendee.model_dump(), record_path.open("w"), indent=4)
 
-        # Validation Lektor page (UUID-keyed).
-        validate_dir = self._validate_dir(attendee)
-        validate_dir.mkdir(parents=True, exist_ok=True)
-        write_validation_page(attendee, validate_dir, self.cert_type)
+        # Validation Lektor page — only attendees get published on 2026.pycon.de.
+        # Masterclass + speaker certs are delivered solely by email.
+        if self.cert_type == "attendee":
+            validate_dir = self._validate_dir(attendee)
+            validate_dir.mkdir(parents=True, exist_ok=True)
+            write_validation_page(attendee, validate_dir, self.cert_type)
 
-        # Public share artefacts (share_hash-keyed; UUID never appears here).
-        share_dir = self._share_dir(attendee)
-        share_dir.mkdir(parents=True, exist_ok=True)
-        self._generate_share_image(attendee, bg_file, share_dir)
-        write_share_page(attendee, share_dir, self.cert_type)
-
-    def _generate_share_image(self, attendee, bg_file, target_dir):
-        """Render the watermarked, hashless PNG of the certificate for social sharing.
-
-        Reuses the same background + overlay pipeline with `share_mode=True`,
-        then rasterises page 0 via pypdfium2 (no system deps, full Unicode).
-        Saves to `<target_dir>/<share_hash>.png`.
-        """
-        reader = PdfReader(str(bg_file))
-        background_page = reader.pages[0]
-        page_width = float(background_page.mediabox.width)
-        page_height = float(background_page.mediabox.height)
-
-        overlay_bytes = self._create_text_overlay(
-            attendee, page_width, page_height, share_mode=True
-        )
-        overlay_page = PdfReader(overlay_bytes).pages[0]
-        background_page.merge_page(overlay_page)
-
-        writer = PdfWriter()
-        writer.add_page(background_page)
-        merged = io.BytesIO()
-        writer.write(merged)
-        merged.seek(0)
-
-        share_dpi = 150
-        scale = share_dpi / 72
-        pdf = pdfium.PdfDocument(merged.read())
-        try:
-            pil_image = pdf[0].render(scale=scale).to_pil()
-            pil_image.save(target_dir / f"{attendee.share_hash}.png", format="PNG", optimize=True)
-        finally:
-            pdf.close()
-
-    def _create_text_overlay(self, attendee, page_width, page_height, share_mode=False):  # noqa: PLR0912, PLR0915
+    def _create_text_overlay(self, attendee, page_width, page_height):  # noqa: PLR0912, PLR0915
         """Create a transparent PDF with text using reportlab.
 
-        When `share_mode=True`, text items flagged with `omit_in_share: true` are skipped.
-        Used to produce the social-share PNG without the hash or validation URL.
+        Renders every configured text item onto the cert background.
         """
         packet = io.BytesIO()
         can = canvas.Canvas(packet, pagesize=(page_width, page_height))
@@ -554,10 +447,6 @@ class Certificates:
             text_items = (type_conf.get("text_items") or []) if type_conf else []
 
         for item in text_items:
-            if share_mode and item.get("omit_in_share"):
-                continue
-            if not share_mode and item.get("share_only"):
-                continue
             font_name = value_or_default(item, "font.name")
             size = value_or_default(item, "font.size")
             style = value_or_default(item, "font.style")

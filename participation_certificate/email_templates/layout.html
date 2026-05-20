@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>${event_full_name}</title>
+</head>
+<body style="margin:0;padding:0;background:#f5f5f5;font-family:Helvetica,Arial,sans-serif;color:#3a3f43;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f5f5f5;padding:32px 0;">
+    <tr><td align="center">
+      <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="background:#ffffff;border-top:4px solid #3778be;padding:32px;">
+        <tr><td align="center" style="padding-bottom:24px;">
+          <img src="cid:pyconde-pydata-2026-logo.png" width="220" alt="${event_full_name}" style="display:block;border:0;outline:none;text-decoration:none;height:auto;">
+        </td></tr>
+        <tr><td style="font-size:16px;line-height:1.55;">
+          <p style="margin:0 0 16px 0;">${greeting}</p>
+          ${intro}
+          ${download_intro}
+        </td></tr>
+        <tr><td align="center" style="padding:8px 0 24px 0;">
+          <a href="${download_url}" style="display:inline-block;background:#fac800;color:#3a3f43;font-weight:bold;padding:14px 28px;text-decoration:none;border-radius:4px;">${cta_label}</a>
+        </td></tr>
+        <tr><td style="font-size:16px;line-height:1.55;">
+          ${post_cta}
+          ${closing}
+          <p style="margin:0;">${signature}<br>${sign_off}</p>
+        </td></tr>
+        <tr><td style="font-size:12px;color:#b7bcbf;border-top:1px solid #b7bcbf;padding-top:16px;text-align:center;margin-top:24px;">
+          ${event_full_name} &middot; 2026.pycon.de
+        </td></tr>
+        <tr><td style="font-size:11px;color:#b7bcbf;text-align:center;padding-top:12px;line-height:1.5;">
+          ${footer}
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>

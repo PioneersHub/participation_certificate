@@ -1,0 +1,13 @@
+# markdownlint configuration for technical docs.
+#
+# Defaults: https://github.com/DavidAnson/markdownlint/blob/main/doc/Rules.md
+# Disabled rules are listed with the rationale.
+default: true
+
+# MD013 (line-length): wide tables and embedded shell snippets routinely exceed
+# any sensible column wrap; reflowing them makes the rendered output worse.
+MD013: false
+
+# MD046 (code-block-style): allow both fenced and indented code blocks. We use
+# fenced everywhere but a stray indented block shouldn't fail the lint.
+MD046: false
