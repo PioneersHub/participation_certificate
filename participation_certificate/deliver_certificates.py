@@ -19,9 +19,12 @@ Multi-step flow (intentional, mirroring conference_ticket_distribute/send_emails
 CLI:
 
     uv run python participation_certificate/deliver_certificates.py \\
-        --type {attendee|masterclass|speaker} \\
+        --type <cert-type> \\
         [--dry-run | --override-recipient <email>] \\
         [--only <uuid> [--only <uuid>...]] [--limit N] [--bcc <addr>]
+
+The valid `--type` values are derived from config (see
+`generate_certificates.configured_cert_types`).
 """
 
 import argparse
@@ -34,11 +37,9 @@ from openpyxl import Workbook
 
 from participation_certificate import PROJECT_DIR, conf, logger
 from participation_certificate.email_renderer import RenderedEmail, render_email
-from participation_certificate.generate_certificates import type_subdir
+from participation_certificate.generate_certificates import configured_cert_types, type_subdir
 from participation_certificate.mailgun import MailgunClient, MailgunSendError
 from participation_certificate.models.attendee import Attendee
-
-CERT_TYPES = ("attendee", "masterclass", "speaker")
 
 
 @dataclass
@@ -293,9 +294,9 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Send branded certificate emails via Mailgun.")
     parser.add_argument(
         "--type",
-        choices=CERT_TYPES,
+        choices=configured_cert_types(),
         default="attendee",
-        help="Cert type to deliver (default: attendee).",
+        help="Cert type to deliver (default: attendee). Choices are derived from config.",
     )
     parser.add_argument(
         "--dry-run",

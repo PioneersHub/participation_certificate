@@ -37,13 +37,13 @@ from pathlib import Path
 from participation_certificate import conf, logger
 from participation_certificate.generate_certificates import (
     Certificates,
+    configured_cert_types,
     obfuscate_name,
     type_subdir,
 )
 from participation_certificate.models.attendee import Attendee
 from participation_certificate.signing import load_signing_key
 
-CERT_TYPES = ("attendee", "masterclass", "speaker")
 _PDF_MIN_BYTES = 10_000
 
 
@@ -213,9 +213,9 @@ def main() -> None:
     )
     parser.add_argument(
         "--type",
-        choices=CERT_TYPES,
+        choices=configured_cert_types(),
         default="attendee",
-        help="Cert type (default: attendee).",
+        help="Cert type (default: attendee). Choices are derived from config.",
     )
     parser.add_argument(
         "--dry-run",

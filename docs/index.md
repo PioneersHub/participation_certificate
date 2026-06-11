@@ -16,13 +16,12 @@ The pipeline supports three cert types:
 - **Masterclass** — driven by an XLSX; delivered only by email.
 - **Speaker** — driven by a JSON; one cert per `(speaker, proposal)` pair, delivered only by email.
 
-## Five-step process
+## Four-step process
 
 1. **Prepare** the source data (see [Walkthrough §3](walkthrough.md#3-data-sources-columns)).
 2. **Generate** signed PDFs per cert type (`run.py --type X`).
-3. **Publish** attendee validation pages to the website (`validation_upload.py`).
-4. **Preview + smoke-test** the emails locally and then to a single test inbox.
-5. **Send** for real — Mailgun, branded HTML, PDF attached, persistent retry state.
+3. **Preview + smoke-test** the emails locally and then to a single test inbox.
+4. **Send** for real — Mailgun, branded HTML, PDF attached, persistent retry state.
 
 Each step is independent and can be reviewed before moving on. The complete runbook is the [Walkthrough](walkthrough.md).
 

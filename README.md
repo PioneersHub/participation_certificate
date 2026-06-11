@@ -47,17 +47,14 @@ uv run python participation_certificate/run.py --type attendee
 uv run python participation_certificate/run.py --type masterclass
 uv run python participation_certificate/run.py --type speaker
 
-# 2. Publish attendee validation pages to the website checkout
-uv run python participation_certificate/validation_upload.py
-
-# 3. Dry-run preview every email locally (writes HTML + xlsx index, sends nothing)
+# 2. Dry-run preview every email locally (writes HTML + xlsx index, sends nothing)
 uv run python participation_certificate/deliver_certificates.py --type attendee --dry-run
 
-# 4. Smoke-send a few to a test inbox (records are not mutated)
+# 3. Smoke-send a few to a test inbox (records are not mutated)
 uv run python participation_certificate/deliver_certificates.py \
     --type attendee --limit 3 --override-recipient you@example.com
 
-# 5. Real send (idempotent; re-running picks up only unsent / failed records)
+# 4. Real send (idempotent; re-running picks up only unsent / failed records)
 uv run python participation_certificate/deliver_certificates.py --type attendee
 ```
 

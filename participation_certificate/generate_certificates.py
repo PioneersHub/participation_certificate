@@ -11,7 +11,7 @@ from cryptography.hazmat.primitives.serialization import pkcs12
 from endesive.pdf import cms
 from fpdf import FPDF, FPDF_VERSION
 from fpdf.enums import AccessPermission
-from omegaconf import DictConfig
+from omegaconf import DictConfig, ListConfig
 from pypdf import PdfReader, PdfWriter
 from reportlab.lib.colors import Color
 from reportlab.lib.styles import ParagraphStyle
@@ -109,19 +109,36 @@ def _type_conf(cert_type: str):
     return conf.get(cert_type) or {}
 
 
-# Cert-type → on-disk subdir under <event>/. Singular tokens are the programmatic
-# identifiers; plural names are the output directory layout the user expects:
-#   _certificates/<event>/{attendees, masterclasses, speakers}/...
-_TYPE_SUBDIR = {
-    "attendee": "attendees",
-    "masterclass": "masterclasses",
-    "speaker": "speakers",
-}
-
-
 def type_subdir(cert_type: str) -> str:
-    """Return the per-type output sub-directory name."""
-    return _TYPE_SUBDIR.get(cert_type, cert_type)
+    """Pluralise the cert-type token for its on-disk subdir under <event>/.
+
+    Cert-type tokens are singular programmatic identifiers (``attendee``,
+    ``speaker``, ``volunteer``, ``masterclass``); the output layout the user
+    expects is plural — ``_certificates/<event>/{attendees, speakers,
+    volunteers, masterclasses}/...``. A sibilant ending (s/x/z/ch/sh) takes
+    ``es`` (``masterclass`` → ``masterclasses``), everything else ``s``. This is
+    a plain rule, not a per-type table, so new regular-noun cert types pluralise
+    automatically.
+    """
+    suffix = "es" if cert_type.endswith(("s", "x", "z", "ch", "sh")) else "s"
+    return cert_type + suffix
+
+
+def configured_cert_types() -> list[str]:
+    """Cert types available for this project, derived from config.
+
+    ``attendee`` is always available; ``speaker`` when ``speaker.enabled``; plus
+    every enabled config block exposing ``load_columns`` (masterclass,
+    volunteer, and any future table-based type). This is the single source of
+    truth for the ``--type`` choices across run / deliver / reissue.
+    """
+    types = ["attendee"]
+    if (conf.get("speaker") or {}).get("enabled"):
+        types.append("speaker")
+    for key, block in conf.items():
+        if isinstance(block, DictConfig) and block.get("enabled") and block.get("load_columns"):
+            types.append(key)
+    return sorted(set(types))
 
 
 def write_validation_page(
@@ -155,6 +172,20 @@ def _to_reportlab_color(color, alpha=None) -> Color:
         g = color / 255
         return Color(g, g, g, alpha=a)
     return Color(0, 0, 0, alpha=a)
+
+
+def wrapbox_baseline_draw_y(page_height: float, y: float, para_h: float, font_size: float) -> float:
+    """Return the y to pass to ``Paragraph.drawOn`` so the FIRST line's baseline
+    lands at ``page_height - y`` — the exact baseline a simple ``drawString``
+    item at the same ``position`` uses.
+
+    This is what unifies the coordinate convention: ``position[1]`` (``y``, from
+    the page top) is the first line's baseline for both plain and wrap-box text.
+    reportlab pins the first line's baseline ``para_h - font_size`` above the
+    ``drawOn`` origin (the paragraph's bottom edge) — independent of leading and
+    of ascent/descent — so anchoring there gives baseline parity.
+    """
+    return (page_height - y) - para_h + font_size
 
 
 def render_text(text: str | list, **kwargs):
@@ -468,6 +499,12 @@ class Certificates:
             size = value_or_default(item, "font.size")
             style = value_or_default(item, "font.style")
             color = value_or_default(item, "font.color")
+            # value_or_default hands back an OmegaConf ListConfig, which is not a
+            # `list`/`tuple` — so the isinstance checks below (and in
+            # `_to_reportlab_color`) would silently fall through to black.
+            # Normalise to a plain list so configured colours are honoured.
+            if isinstance(color, ListConfig):
+                color = list(color)
             alpha = item.get("font", {}).get("alpha") if item.get("font") else None
             text = value_or_default(item, "text")
             x, y = item.position if item.get("position") else (0, 0)
@@ -526,11 +563,16 @@ class Certificates:
                     para_html = text
                 para = Paragraph(para_html, style_obj)
                 _w, para_h = para.wrap(box_width, box_height)
-                # Vertically centre inside the box; `y` is the box's top edge in
-                # top-left coords, so box-bottom in reportlab coords is below.
-                box_bottom_rl = page_height - (y + box_height)
-                y_offset = (box_height - para_h) / 2
-                para.drawOn(can, x, box_bottom_rl + y_offset)
+                # Unified convention: position[1] (`y`) is the BASELINE of the
+                # first line, identical to the simple drawString path — so a
+                # single-line wrap-box item at [x, y] lands on the exact same
+                # baseline as a plain text item at [x, y]. reportlab pins the
+                # first line's baseline at box_top - fontSize, i.e. para_h - size
+                # above the drawOn origin (the paragraph's bottom edge). `height`
+                # no longer centres; it only bounds the wrap. Extra wrapped lines
+                # flow downward from the first baseline.
+                draw_y = wrapbox_baseline_draw_y(page_height, y, para_h, size)
+                para.drawOn(can, x, draw_y)
                 continue
 
             if md_link:

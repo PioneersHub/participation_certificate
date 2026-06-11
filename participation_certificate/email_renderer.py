@@ -235,6 +235,7 @@ def _build_variables(cert_type: str, attendee: Attendee) -> dict[str, str]:
         "full_name": attendee.full_name,
         "event_full_name": conf.event_full_name,
         "event_short_name": conf.event_short_name,
+        "event_website": conf.get("event_website") or "",
         "certificates_url": certificates_url,
         "download_url": download_url,
         "uuid": attendee.uuid,

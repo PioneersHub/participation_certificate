@@ -20,8 +20,9 @@ export CERTIFICATE_PROJECT_SLUG=your-conference     # name of a projects/<slug>/
 # generate
 uv run python participation_certificate/run.py --type attendee
 
-# publish attendee validation pages (attendees only)
-uv run python participation_certificate/validation_upload.py
+# distribute the output (MANUAL — see §5.4): upload _certificates/<type>/upload-to-certificates/
+# to your PDF host, and copy attendees/website-validate/ into the conference website checkout.
+# Do this before sending — the emailed download + "validate online" links point at those hosts.
 
 # preview every email locally — write HTML + xlsx index, send nothing
 uv run python participation_certificate/deliver_certificates.py --type attendee --dry-run
@@ -36,7 +37,7 @@ uv run python participation_certificate/deliver_certificates.py \
 uv run python participation_certificate/deliver_certificates.py --type attendee
 ```
 
-For masterclass and speaker certs, swap `--type attendee` for `--type masterclass` or `--type speaker`. Step "publish attendee validation pages" runs **only once for attendees** — the other two types are not published to the website.
+For other cert types, swap `--type attendee` for `--type masterclass`, `--type speaker`, `--type volunteer`, etc. The valid `--type` values are derived from config (every enabled block with `load_columns`, plus `speaker` when enabled), so `run.py --type <bad>` prints the configured set.
 
 ### File map
 
@@ -68,19 +69,19 @@ _data/                    config_local.yaml + config.yaml
    v                              v
 run.py --type X  ->  projects/<slug>/_certificates/<type>/{upload-to-certificates, records, website-validate}
                               |
-        +---------------------+--------------------------+
-        |                                                |
-        v (attendees only)                               v (any type)
-validation_upload.py ->                  deliver_certificates.py --dry-run
-   PyCon website checkout                     -> email-preview/{*.html, *.txt, *.xlsx}
-                                                         |
-                                            review, then real send
-                                                         |
-                                                         v
-                                       Mailgun (HTML + text + PDF + cid:logo)
-                                                         |
-                                                         v
-                                       records/<uuid>.json (mail_status, mail_message_id, ...)
+        +---------------------+---------------------------+
+        | MANUAL publish (§5.4)                            | (any type)
+        v                                                  v
+  upload-to-certificates/ -> PDF host (S3 @ certificates_url)   deliver_certificates.py --dry-run
+  website-validate/ -> conference website checkout (attendees)     -> email-preview/{*.html,*.txt,*.xlsx}
+                                                                       |
+                                                           review, then real send
+                                                                       |
+                                                                       v
+                                                     Mailgun (HTML + text + PDF + cid:logo)
+                                                                       |
+                                                                       v
+                                                     records/<uuid>.json (mail_status, mail_message_id, ...)
 ```
 
 ## 2. Prerequisites
@@ -146,6 +147,44 @@ transformers = {
 }
 ```
 
+#### Generating the CSV from a Pretix check-in list
+
+You normally do **not** hand-write this CSV. Generate it from the ticket
+system's check-in list:
+
+1. **Download the check-in list from Pretix.** In the Pretix backend go to
+   *Check-in lists → (your list) → Export → "Check-in list"* and pick the
+   **Excel (.xlsx)** format. Save it under `_data/` and point
+   `attendee_checkin.checkin_table` at the filename (sheet defaults to
+   `Check-in list`).
+2. **Convert it to the canonical CSV:**
+
+   ```bash
+   uv run python participation_certificate/preprocess_checkin.py
+   # reads attendee_checkin.checkin_table → writes attendees_table
+   ```
+
+The converter ([`preprocess_checkin.py`](../participation_certificate/preprocess_checkin.py))
+maps the Pretix columns and carries **every row through** — no filtering on the
+`Checked in` column (often empty in exports) and no ticket-type exclusions:
+
+| Pretix column | Canonical CSV column |
+| --- | --- |
+| `Attendee name: Given name` | `first name` |
+| `Attendee name: Family name` | `last name` |
+| `Company` | `organisation` |
+| `Email` | `email` |
+| *(literal `"onsite"`)* | `comment` |
+
+**on site / remote heuristic.** The downstream transformer keys off the
+`comment` value: any value containing the substring `"remote"` →
+`attended_how = "remotely"`, everything else → `"on site"`. The converter
+writes `"onsite"` for every row, so a plain check-in list yields all-on-site
+certificates (a physical check-in implies in-person attendance). For a hybrid
+event, either edit the generated CSV to set `comment` to something containing
+`remote` for online attendees, or merge a separate "online attendees" export
+before converting — the converter intentionally does not guess attendance mode.
+
 Verify the source columns are present:
 
 ```bash
@@ -195,6 +234,28 @@ programme.
 | `${conf.speaker.sessions_json}` | **Source of truth** for which certs to emit — one entry per confirmed session. |
 | `${conf.speaker.speakers_json}` | **Contact directory** — used to resolve each `Speaker ID` to an email. |
 
+**Downloading from Pretalx.** Both files come from the Pretalx schedule/talk
+data, and **only confirmed, accepted sessions must be exported** — the cert is
+proof a talk was actually given. In the Pretalx organiser backend filter the
+sessions/proposals to **state = "confirmed"** (accepted *and* confirmed for the
+schedule; drop "submitted"/"accepted-but-unconfirmed"/"withdrawn"/"rejected")
+before exporting, or pull the same set via the API
+(`GET /api/events/<event>/submissions/?state=confirmed`, plus
+`/api/events/<event>/speakers/`). The exports do not match these field names
+verbatim, so a small transform into the schemas below is expected.
+
+**Minimum attributes** the pipeline actually reads
+([`preprocess_speakers.py`](../participation_certificate/preprocess_speakers.py)) —
+anything else in the export is ignored:
+
+- `sessions_json`: `ID`, `Proposal title`, `Speaker IDs` (list), `Speaker names`
+  (list, positionally aligned with `Speaker IDs`). `Session type` is optional.
+  A session missing `ID`, `Proposal title`, or `Speaker IDs` is skipped with a
+  warning.
+- `speakers_json`: `ID`, `Name`, `Email`. A session referencing a Speaker ID
+  with no resolvable email in this file is skipped with a warning — never
+  silently dropped.
+
 **Sessions schema** (`sessions_json`) — each session can have multiple co-presenters; one cert is emitted per `(speaker, session)` pair:
 
 ```json
@@ -242,6 +303,46 @@ print('session types:', dict(types))
 # expect: unresolvable == 0
 ```
 
+### 3.4 Volunteers / Organizers — filtered from the check-in list
+
+Volunteers and organizers get a distinct certificate (cert-type token is
+singular: `--type volunteer`; the output dir pluralises to `volunteers/`). Their
+input file is carved out of the **same Pretix check-in list** used for attendees:
+`preprocess_checkin.py` writes `conf.volunteer.attendees_table` by keeping the
+check-in rows whose `Product` contains any substring in
+`conf.volunteer.source_products` (case-insensitive), preserving the **raw Pretix
+columns** so the masterclass-style `volunteer.load_columns` maps cleanly.
+
+```yaml
+volunteer:
+  enabled: true
+  attendees_table: "your-conference-volunteers.csv"
+  source_products: ["organizer", "volunteer"]
+  load_columns:
+    "Attendee name": "full_name"
+    "Attendee name: Given name": "first_name"
+    "Email": "email"
+    "Order code": "ticket_reference"
+    "Product": "masterclass"   # rendered wherever text_items use {attendee.masterclass}
+  pdf_background: { file: "Volunteer Certificate.pdf" }
+```
+
+Generate the CSV (emitted alongside `attendees.csv` from one read), then verify:
+
+```bash
+uv run python participation_certificate/preprocess_checkin.py
+uv run python -c "
+import pandas as pd
+from participation_certificate import conf
+v = pd.read_csv('_data/' + conf.volunteer.attendees_table, dtype=str)
+assert v['Product'].str.contains('organizer|volunteer', case=False).all()
+print('OK', len(v))
+"
+```
+
+Organizers/volunteers are **also** kept in `attendees.csv`, so they receive both
+an attendee and a volunteer certificate.
+
 ## 4. Configuration
 
 Configuration is layered: `config.yaml` (committed defaults; never edit per-event) is overridden by `config_local.yaml` (gitignored; per-event overrides). Both files are loaded via OmegaConf at import time.
@@ -256,7 +357,7 @@ validation_url: "https://your-conference.example.com/attendee-certificate/"
 static_pages_website: "/path/to/your-website-checkout"
 ```
 
-`static_pages_website` is the local path to the PyCon website checkout; attendee validation pages are copied here by `validation_upload.py`.
+`static_pages_website` is an optional fallback base for the validation link when `validation_url` is unset. Attendee validation pages are generated locally under `_certificates/<event>/attendees/website-validate/<uuid>/contents.lr`; publishing them to a website checkout is a manual step.
 
 ### 4.2 Attendee source + batch size
 
@@ -471,37 +572,64 @@ Run one cert type at a time. The generator is idempotent at the path level — r
 
 - **Troubleshoot:** as §5.1 plus mismatched count usually means a speaker has unequal-length `Proposal IDs` / `Proposal titles` lists (the loader uses `zip(strict=False)` so the shorter wins).
 
-## 6. Publish attendee validation pages
+### 5.4 Distribute the generated artefacts (manual)
 
-- **Goal:** Make `https://your-conference.example.com/attendee-certificate/${UUID}/` resolve for every attendee. Only attendees are published; masterclass and speaker certs are not on the website.
-- **Preconditions:** §5.1 done. `conf.static_pages_website` points at a clone of the conference website repo with a clean `git status`.
-- **Command:**
+Generation only writes to the local `_certificates/` tree. Two **manual** publish
+steps make the emailed links resolve, so do them **before** sending (§6+): the
+download link points at the hosted PDF, and the "Validate online" link points at
+the page on the conference website.
+
+- **Goal:** (1) host every signed PDF behind `certificates_url`; (2) publish the
+  attendee validation pages to the conference website.
+- **Preconditions:** §5.1–§5.3 done for the types you generated. `aws` is
+  configured for the cert bucket; `conf.static_pages_website` is a clean checkout
+  of the conference website repo.
+
+- **1. Upload the signed PDFs** — for every cert type you generated, mirror its
+  `upload-to-certificates/` tree to the host behind `certificates_url` (public
+  pattern `{certificates_url}{uuid}/{uuid}.pdf`). This must include *all* types,
+  since the download link in every email points there:
 
   ```bash
-  uv run python participation_certificate/validation_upload.py
+  S3="$(uv run python -c 'from participation_certificate import conf; print(conf.certificates_s3_uri)')"
+  for TYPE_DIR in attendees masterclasses speakers volunteers; do
+    SRC="projects/${CERTIFICATE_PROJECT_SLUG}/_certificates/${TYPE_DIR}/upload-to-certificates"
+    [ -d "${SRC}" ] && aws s3 cp "${SRC}/" "${S3}/" --recursive
+  done
+  ```
+
+- **2. Publish the attendee validation pages** — copy each
+  `attendees/website-validate/<uuid>/contents.lr` into the website checkout under
+  `content/attendee-certificate/<uuid>/`, then commit + push **from that checkout**
+  (not this repo). Attendee-only — masterclass/speaker/volunteer certs are never
+  published to the website:
+
+  ```bash
+  WEBSITE="$(uv run python -c 'from participation_certificate import conf; print(conf.static_pages_website)')"
+  SRC="projects/${CERTIFICATE_PROJECT_SLUG}/_certificates/attendees/website-validate"
+  cp -R "${SRC}/." "${WEBSITE}/content/attendee-certificate/"
+  (cd "${WEBSITE}" && git add -f content/attendee-certificate/ \
+     && git commit -m "publish attendee validation pages" && git push)
   ```
 
 - **Verify:**
 
   ```bash
-  WEBSITE="$(uv run python -c 'from participation_certificate import conf; print(conf.static_pages_website)')"
+  # PDFs hosted (one per generated cert across all uploaded types):
+  aws s3 ls "${S3}/" --recursive | grep -c '\.pdf$'
+  # Validation pages now in the website checkout (== attendee count from §5.1):
   find "${WEBSITE}/content/attendee-certificate" -name contents.lr | wc -l
-  # expect: equal to the attendee count from §5.1 Verify
   ```
 
-- **Then commit and push from the website checkout (not this repo):**
+- **Troubleshoot:**
+  - Download link 404s in a delivered email → the PDF was not uploaded, or
+    `certificates_url` / `certificates_s3_uri` disagree on bucket + prefix.
+  - "Validate online" link 404s → the `contents.lr` was not copied/pushed, or
+    `static_pages_website` points at the wrong checkout (the pages must land under
+    `content/attendee-certificate/<uuid>/` so the URL `{validation_url}<uuid>/`
+    resolves).
 
-  ```bash
-  WEBSITE="$(uv run python -c 'from participation_certificate import conf; print(conf.static_pages_website)')"
-  cd "${WEBSITE}"
-  git add -f content/attendee-certificate/
-  git commit -m "publish attendee validation pages"
-  git push
-  ```
-
-- **Troubleshoot:** zero results from the `find` means the script ran against an empty `records/` directory — re-run §5.1 first. Masterclass / speaker certs are never synced; that is correct behaviour.
-
-## 7. Dry-run email preview
+## 6. Dry-run email preview
 
 - **Goal:** Render every email locally; produce per-recipient HTML + txt previews and an xlsx index. Nothing is sent.
 - **Preconditions:** §5.x done for the target cert type. Mailgun is **not** contacted in dry-run.
@@ -521,18 +649,18 @@ Run one cert type at a time. The generator is idempotent at the path level — r
   grep -l '\${' "${PREVIEW}"/*.html | head -1 || echo "OK: no leftover placeholders"
   ```
 
-- **Visual review:** open one `${PREVIEW}/${UUID}.html` in a browser. Check copy, links, brand colours (`#3778be` top rule, `#fac800` CTA), and the absence of `${...}` literals. The CID-inline logo will **not** render in a browser preview (alt text shows instead) — that's expected. §8 confirms the logo renders in a real inbox.
+- **Visual review:** open one `${PREVIEW}/${UUID}.html` in a browser. Check copy, links, brand colours (`#3778be` top rule, `#fac800` CTA), and the absence of `${...}` literals. The CID-inline logo will **not** render in a browser preview (alt text shows instead) — that's expected. §7 confirms the logo renders in a real inbox.
 - **Troubleshoot:**
   - `FileNotFoundError: No records dir at ...` — §5.x for this cert type hasn't been run yet (or was wiped). Generate first, then dry-run.
   - `RuntimeError: email.subjects.attendee is not configured` — populate `email.subjects` in `config_local.yaml`.
   - `KeyError` during render — a template references a variable not in the substitution dict; inspect `participation_certificate/email_renderer.py`.
 
-## 8. Smoke test: real send to a test inbox
+## 7. Smoke test: real send to a test inbox
 
 This step exercises the real Mailgun call with real cert content, but redirects every recipient to one test address. Use it to confirm the logo CID embed renders in real email clients, the PDF arrives intact, and the body links resolve.
 
 - **Goal:** Send N real-content emails to a single test address; verify in the inbox; leave `records/<uuid>.json` untouched so the subsequent real send still picks up every record.
-- **Preconditions:** §7 dry-run successful for the target type. `_secret/mailgun_key` and `conf.mailgun.domain` are correct. Operator has access to the test inbox.
+- **Preconditions:** §6 dry-run successful for the target type. `_secret/mailgun_key` and `conf.mailgun.domain` are correct. Operator has access to the test inbox.
 - **Command:**
 
   ```bash
@@ -570,10 +698,10 @@ This step exercises the real Mailgun call with real cert content, but redirects 
   - Logo missing in the inbox — `assets/email/your-conference-logo.png` missing or wrong filename; re-check §2.
   - No messages received — confirm the inbox isn't a Mailgun-blocked test domain (use a real address).
 
-## 9. Real send
+## 8. Real send
 
 - **Goal:** Deliver every undelivered cert to its real recipient and persist delivery state.
-- **Preconditions:** §8 smoke test passed for every cert type you intend to send.
+- **Preconditions:** §7 smoke test passed for every cert type you intend to send.
 - **Command:**
 
   ```bash
@@ -604,7 +732,7 @@ This step exercises the real Mailgun call with real cert content, but redirects 
   - Persistent same-error failures — inspect the record JSON's `mail_last_error`; common causes are invalid email (pydantic validation) or a missing PDF.
   - Sent but not received — check the Mailgun dashboard at <https://app.eu.mailgun.com/> for delivery status, bounces, spam complaints.
 
-## 10. Where logs and rendered messages are persisted
+## 9. Where logs and rendered messages are persisted
 
 | Artefact | Path | Written by | Lifetime / re-run behaviour |
 | --- | --- | --- | --- |
@@ -613,7 +741,7 @@ This step exercises the real Mailgun call with real cert content, but redirects 
 | Rendered HTML | `projects/${CERTIFICATE_PROJECT_SLUG}/_certificates/${TYPE_DIR}/email-preview/${UUID}.html` | Same | Overwritten on each render |
 | Rendered text | `projects/${CERTIFICATE_PROJECT_SLUG}/_certificates/${TYPE_DIR}/email-preview/${UUID}.txt` | Same | Overwritten on each render |
 | Signed PDF | `projects/${CERTIFICATE_PROJECT_SLUG}/_certificates/${TYPE_DIR}/upload-to-certificates/${UUID}/${UUID}.pdf` | `Certificates._generate_with_pdf_background` | Permanent until regenerated |
-| Validation Lektor page (attendees) | `projects/${CERTIFICATE_PROJECT_SLUG}/_certificates/attendees/website-validate/${UUID}/contents.lr` + PyCon website checkout | `write_validation_page` + `validation_upload.sync_attendee_validation` | Permanent |
+| Validation Lektor page (attendees) | `projects/${CERTIFICATE_PROJECT_SLUG}/_certificates/attendees/website-validate/${UUID}/contents.lr` | `write_validation_page` | Permanent |
 | Console log | structlog stdout from each CLI run | structlog default handler | Ephemeral — pipe to a file if you want a transcript |
 | Mailgun delivery log | Mailgun dashboard (Sending → Logs) | Mailgun | 3 days (free tier) / 30 days (paid) |
 
@@ -638,7 +766,7 @@ for ct in ('attendees', 'masterclasses', 'speakers'):
 "
 ```
 
-## 11. Reissue a certificate with a corrected name
+## 10. Reissue a certificate with a corrected name
 
 When a recipient asks for a name correction (typo, married name, nickname that crept in from the ticket data), `reissue.py` re-cuts a single signed PDF — and only that one — while keeping every published identifier stable.
 
@@ -685,7 +813,7 @@ When a recipient asks for a name correction (typo, married name, nickname that c
   - `Record file uuid <x> does not match path uuid <y>` — the record's filename and its `uuid` field disagree (shouldn't happen unless something is hand-edited); refuses rather than guess.
   - `RuntimeError: uuid drifted / hash drifted / full_name not updated` — internal self-check failed; do not publish the result. File a bug.
 
-## 12. Operational notes
+## 11. Operational notes
 
 - **Adding a new cert type.** Copy the `masterclass:` block in `config.yaml`, add a loader function in `participation_certificate/run.py`, drop the cert type's body block under `email.body.<type>` in `config_local.yaml`, and add the type to `CERT_TYPES` in `participation_certificate/deliver_certificates.py`.
 - **Force a resend of one record.** Prefer `--only ${UUID}` to manually editing the record JSON. Manual edits get out of sync with reality.

@@ -7,6 +7,8 @@
 event_short_name: ""
 # full name of the event, used in content
 event_full_name: ""
+# Public conference website URL, shown in the email footer (${event_website}).
+event_website: ""
 # Public HTTPS prefix for cert downloads, used in delivery emails.
 # Pattern: {certificates_url}{uuid}/{uuid}.pdf
 #   e.g. https://s3.eu-central-1.amazonaws.com/certs.example.com/your-conference/
@@ -17,8 +19,10 @@ certificates_url: ""
 # bucket+prefix without the public-HTTPS wrapper:
 #   e.g. s3://certs.example.com/your-conference
 certificates_s3_uri: ""
-# Local path to the conference website checkout; attendee validation pages
-# (`<uuid>/contents.lr`) are synced here by validation_upload.py.
+# Optional fallback base for the validation link when `validation_url` is unset.
+# (Attendee validation pages are generated locally under
+# `_certificates/<event>/attendees/website-validate/<uuid>/contents.lr`;
+# publishing them to a website checkout is a manual step.)
 static_pages_website: ""
 # Public URL prefix for the validation link printed on the PDF.
 # Pattern: {validation_url}{uuid}/
@@ -26,6 +30,13 @@ static_pages_website: ""
 validation_url: ""
 # Attendee data file, relative to dirs.data_dir. CSV (.csv) or Excel (.xlsx).
 attendees_table: ""
+# Source for generating `attendees_table` from a Pretix check-in list export.
+# `preprocess_checkin.py` reads `checkin_table` (the exported xlsx, under
+# dirs.data_dir) and writes the canonical `attendees_table` CSV. Leave
+# `checkin_table` empty if you maintain `attendees_table` by hand.
+attendee_checkin:
+  checkin_table: ""
+  sheet: "Check-in list"
 # Process only the first N attendees (useful for testing). 0 = process all.
 batch_size: 0
 # Display text for the cert's "No." line, keyed by Attendee.attended_how value.
@@ -38,10 +49,15 @@ validation_page_title: "Certificate of Attendance Validation Service"
 # ########################################
 # OPTIONAL CERTIFICATE TYPES
 # ########################################
-# Masterclass + Speaker certificates reuse the same pipeline but with their own
-# data source, background, layout and Lektor destinations. Set `enabled: true`
-# and populate the per-type block in config_local.yaml to generate them via
-#   `python run.py --type masterclass`  /  `--type speaker`.
+# Masterclass + Speaker (+ Volunteers, …) certificates reuse the same pipeline
+# but with their own data source, background, layout and Lektor destinations. Set
+# `enabled: true` and populate the per-type block in the per-project config to
+# generate them via `python run.py --type <name>`.
+#
+# `--type` choices are derived from config (see run.build_dispatch): `attendee`
+# is always available; `speaker` appears when enabled; and ANY block here that
+# sets `enabled: true` AND `load_columns` (masterclass, volunteer, or a new
+# table-based type you add) is offered automatically — no code change needed.
 masterclass:
   enabled: false
   # Excel under dirs.data_dir.
@@ -67,6 +83,22 @@ speaker:
   # URL templates resolved with {attendee.speaker_id} / {attendee.proposal_id}.
   speaker_url_template: ""
   talk_url_template: ""
+
+# Volunteer/Organizer — a table-based type (mechanically like masterclass). The
+# token is singular (`--type volunteer`); the output dir pluralises to
+# `volunteers/`. `attendees_table` is a CSV/XLSX with Pretix columns mapped by
+# `load_columns`. Optionally `source_products` lets preprocess_checkin.py
+# generate that file by filtering the check-in list to rows whose Product
+# contains any listed substring (case-insensitive); omit it to maintain
+# `attendees_table` by hand.
+volunteer:
+  enabled: false
+  attendees_table: ""
+  load_columns: {}
+  source_products: []         # e.g. ["organizer", "volunteer"]
+  pdf_background:
+    file: ""
+  text_items: []
 # ########################################
 # DIRECTORIES
 # ########################################
@@ -156,11 +188,16 @@ layout:
         - 0
   text_items:
     # text: "str"
-    # position: tuple(x, y)
+    # position: tuple(x, y)   # x from left, y from top; y is the text BASELINE.
     # font:
     # name: "str valid font name (optional, fallbacks to default)"
     # size: number (optional, fallbacks to default)
     # style: B, I, BI  (optional, fallbacks to "")
+    # width + height (both set) -> "wrap-box": text wraps to `width` and may span
+    #   several lines. position[1] is still the FIRST line's baseline (same
+    #   convention as a plain item), and `height` only bounds the wrap — it does
+    #   NOT vertically centre. So a single-line wrap-box at [x, y] lands on the
+    #   exact same baseline as a simple text item at [x, y].
     - text: "This is a Title"
       position:
         - 45

@@ -7,6 +7,8 @@
 # Used in paths + email subjects + body substitutions.
 event_short_name: "your-conference"
 event_full_name: "Your Conference 2026"
+# Public conference website URL, shown in the email footer (${event_website}).
+event_website: "https://your-conference.example.com"
 # Public HTTPS prefix for cert downloads (used in delivery emails).
 # Pattern: {certificates_url}{uuid}/{uuid}.pdf
 certificates_url: "https://s3.example.com/your-bucket/your-conference/"
@@ -14,11 +16,24 @@ certificates_url: "https://s3.example.com/your-bucket/your-conference/"
 certificates_s3_uri: "s3://your-bucket/your-conference"
 # Public URL prefix for the validation link on the cert PDF (attendee only).
 validation_url: "https://your-conference.example.com/attendee-certificate/"
-# Local path to the conference website checkout where attendee validation
-# pages are synced by validation_upload.py. Absolute path.
+# Optional fallback base for the validation link when `validation_url` is unset.
+# Attendee validation pages are generated locally under
+# `_certificates/<event>/attendees/website-validate/<uuid>/contents.lr`;
+# publishing them to a website checkout is a manual step.
 static_pages_website: "/path/to/your-website-checkout"
 # Attendee data file, relative to dirs.data_dir.
 attendees_table: "attendees-your-conference.csv"
+# Optional: generate attendees_table from a Pretix check-in list export.
+# `uv run python participation_certificate/preprocess_checkin.py` reads this
+# xlsx and writes attendees_table above. Leave checkin_table empty to maintain
+# the CSV by hand.
+attendee_checkin:
+  checkin_table: "your-conference_checkin.xlsx"
+  sheet: "Check-in list"
+# Exports from pretalx: accepeted | confirmed sessions and speakers
+speaker_data:
+  speakers: euroscipy-2025_speakers.json
+  sessions: euroscipy-2025_sessions.json
 # Process only the first N rows (testing). 0 = process all.
 batch_size: 0
 # ########################################
@@ -168,4 +183,20 @@ layout:
 #     file: "Speaker Certificate.pdf"
 #   speaker_url_template: "https://your-conference.example.com/program/speakers/{attendee.speaker_id}/"
 #   talk_url_template: "https://your-conference.example.com/program/talks/{attendee.proposal_id}/"
+#   text_items: [...]
+#
+# volunteer:                  # table-based type; `run.py --type volunteer`
+#   enabled: true
+#   attendees_table: "your-conference-volunteers.csv"
+#   # preprocess_checkin.py generates the CSV above by filtering the check-in
+#   # list to Products containing any of these substrings (case-insensitive):
+#   source_products: ["organizer", "volunteer"]
+#   load_columns:
+#     "Attendee name": "full_name"
+#     "Attendee name: Given name": "first_name"
+#     "Email": "email"
+#     "Order code": "ticket_reference"
+#     "Product": "masterclass"
+#   pdf_background:
+#     file: "Volunteer Certificate.pdf"
 #   text_items: [...]
