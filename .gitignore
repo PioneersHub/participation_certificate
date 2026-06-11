@@ -223,3 +223,4 @@ HelveticaNeue.ttc
 # other
 .ruff_cache
 config_local*
+.DS_Store
